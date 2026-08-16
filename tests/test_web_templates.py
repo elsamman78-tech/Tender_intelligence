@@ -30,3 +30,21 @@ def test_sources_template_renders():
     assert r.status_code == 200
     assert r.template.name == 'sources.html'
     assert 'request' in r.context
+
+
+def test_agents_template_renders():
+    r=client.get('/agents')
+    assert r.status_code==200
+    assert r.template.name=='agents.html'
+
+
+def test_source_health_template_renders():
+    r=client.get('/system/source-health')
+    assert r.status_code==200
+    assert r.template.name=='source_health.html'
+
+
+def test_country_coverage_template_renders():
+    r=client.get('/coverage/countries')
+    assert r.status_code==200
+    assert r.template.name=='country_coverage.html'
