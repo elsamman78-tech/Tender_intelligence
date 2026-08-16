@@ -15,8 +15,10 @@ ALLOW_PAID_APIS = False if ZERO_COST_MODE else os.getenv('ALLOW_PAID_APIS','fals
 DATABASE_URL = os.getenv('DATABASE_URL', f"sqlite:///{DATA_DIR / 'tenders.db'}")
 OLLAMA_URL = os.getenv('OLLAMA_URL', 'http://127.0.0.1:11434')
 OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'qwen3:4b')
+AUTONOMOUS_AGENTS_ENABLED = os.getenv('AUTONOMOUS_AGENTS_ENABLED', 'true').lower() == 'true'
+AUTONOMOUS_AGENT_MAX_CYCLES = max(1, min(int(os.getenv('AUTONOMOUS_AGENT_MAX_CYCLES', '2')), 3))
 TIMEZONE = os.getenv('TIMEZONE', 'Africa/Cairo')
-AGENT_REACH_ENABLED = os.getenv('AGENT_REACH_ENABLED', 'true').lower() == 'true'
+AGENT_REACH_ENABLED = os.getenv('AGENT_REACH_ENABLED', 'false').lower() == 'true'
 AGENT_REACH_SEARCH_COMMAND = os.getenv('AGENT_REACH_SEARCH_COMMAND', '').strip()
 SEARXNG_URL = os.getenv('SEARXNG_URL', '').strip()
 DDG_HTML_ENABLED = os.getenv('DDG_HTML_ENABLED', 'true').lower() == 'true'
@@ -28,4 +30,4 @@ DISCOVERY_MAX_RESULTS_PER_QUERY = int(os.getenv('DISCOVERY_MAX_RESULTS_PER_QUERY
 DISCOVERY_REQUEST_TIMEOUT = int(os.getenv('DISCOVERY_REQUEST_TIMEOUT', '20'))
 AUTO_PROMOTE_TENDERS = os.getenv('AUTO_PROMOTE_TENDERS', 'true').lower() == 'true'
 MAX_UPLOAD_MB = int(os.getenv('MAX_UPLOAD_MB', '50'))
-USER_AGENT = os.getenv('DISCOVERY_USER_AGENT', 'TenderIntelligenceZeroCost/2.0 (+local-business-discovery)')
+USER_AGENT = os.getenv('DISCOVERY_USER_AGENT', 'TenderIntelligenceZeroCost/2.1 (+local-business-discovery)')
