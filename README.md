@@ -2,6 +2,14 @@
 
 Local-first and cloud-ready Tender Intelligence & Bid Decision System for engineering consultancy opportunities.
 
+## Run now — free demo
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/elsamman78-tech/Tender_intelligence)
+
+This launches the real FastAPI application on a Render Free web service for immediate testing. The free demo can spin down after inactivity and uses ephemeral local storage, so it is **for testing only**, not the final 24/7 persistent deployment.
+
+Arabic quick guide: `RUN_NOW_AR.md`.
+
 ## Current implemented core
 
 - Existing V1 analyzer preserved.
