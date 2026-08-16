@@ -25,6 +25,8 @@ from .discovery.scanner import scan_source
 from .discovery.scheduler import start_scheduler, stop_scheduler
 from .discovery.providers.router import provider_status
 from .discovery.coverage import coverage_snapshot, run_coverage_benchmark
+from .routes.agents import router as agents_router
+from .routes.source_health import router as source_health_router
 
 Base.metadata.create_all(bind=engine)
 migrate_additive()
@@ -33,6 +35,8 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI(title=APP_NAME)
 templates = Jinja2Templates(directory=str(BASE_DIR / 'app' / 'templates'))
 app.mount('/static', StaticFiles(directory=str(BASE_DIR / 'app' / 'static')), name='static')
+app.include_router(agents_router)
+app.include_router(source_health_router)
 
 @app.on_event('startup')
 def _startup():
