@@ -11,6 +11,11 @@ SEED_SOURCES = [
         'channels':[('TENDERS','https://www.ungm.org/Public/Notice','HTML'),('AWARDS','https://www.ungm.org/Public/ContractAward/Index/ContractAwards','HTML')]
     },
     {
+        'name':'UNDP Procurement Notices','domain':'procurement-notices.undp.org','base_url':'https://procurement-notices.undp.org/',
+        'source_type':'UN','country':None,'languages':'en,fr','priority':'CRITICAL','trust_score':100,'relevance_score':92,'discovery_value':96,
+        'channels':[('TENDERS','https://procurement-notices.undp.org/','HTML')]
+    },
+    {
         'name':'African Development Bank Procurement','domain':'afdb.org','base_url':'https://www.afdb.org/en/projects-and-operations/procurement',
         'source_type':'MDB','country':None,'languages':'en,fr','priority':'CRITICAL','trust_score':100,'relevance_score':95,'discovery_value':95,
         'channels':[('EOI','https://www.afdb.org/en/documents/project-related-procurement/procurement-notices/request-for-expression-of-interest','HTML'),('TENDERS','https://www.afdb.org/en/documents/category/specific-procurement-notices','HTML'),('EARLY_SIGNALS','https://www.afdb.org/en/documents/project-related-procurement/procurement-notices/general-procurement-notices','HTML')]
@@ -24,6 +29,16 @@ SEED_SOURCES = [
         'name':'Asian Development Bank Business Opportunities','domain':'adb.org','base_url':'https://www.adb.org/business/project-procurement/business-opportunities',
         'source_type':'MDB','country':None,'languages':'en','priority':'HIGH','trust_score':100,'relevance_score':90,'discovery_value':90,
         'channels':[('TENDERS','https://www.adb.org/business/project-procurement/business-opportunities','HTML')]
+    },
+    {
+        'name':'EBRD Procurement Notices','domain':'ebrd.com','base_url':'https://www.ebrd.com/home/work-with-us/project-procurement/procurement-notices.html',
+        'source_type':'MDB','country':None,'languages':'en','priority':'HIGH','trust_score':100,'relevance_score':92,'discovery_value':92,
+        'channels':[('TENDERS','https://www.ebrd.com/home/work-with-us/project-procurement/procurement-notices.html','HTML'),('EARLY_SIGNALS','https://www.ebrd.com/home/work-with-us/project-procurement.html','HTML')]
+    },
+    {
+        'name':'TED European Public Procurement','domain':'ted.europa.eu','base_url':'https://ted.europa.eu/en/',
+        'source_type':'SUPRANATIONAL_GOVERNMENT','country':None,'languages':'multi','priority':'HIGH','trust_score':100,'relevance_score':88,'discovery_value':95,
+        'channels':[('TENDERS','https://ted.europa.eu/en/','HTML')]
     },
     {
         'name':'Saudi Etimad Tenders','domain':'tenders.etimad.sa','base_url':'https://tenders.etimad.sa/',
