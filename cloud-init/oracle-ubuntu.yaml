@@ -1,0 +1,16 @@
+#cloud-config
+package_update: true
+packages:
+  - git
+  - curl
+  - ca-certificates
+
+runcmd:
+  - [ bash, -lc, "curl -fsSL https://raw.githubusercontent.com/elsamman78-tech/Tender_intelligence/main/scripts/bootstrap_ubuntu.sh -o /tmp/tender-bootstrap.sh" ]
+  - [ bash, -lc, "chmod +x /tmp/tender-bootstrap.sh && /tmp/tender-bootstrap.sh" ]
+  - [ bash, -lc, "rm -rf /opt/Tender_intelligence && git clone https://github.com/elsamman78-tech/Tender_intelligence.git /opt/Tender_intelligence" ]
+  - [ bash, -lc, "cd /opt/Tender_intelligence && cp -n .env.cloud.example .env && chmod +x scripts/*.sh && mkdir -p data/uploads backups" ]
+  - [ bash, -lc, "cd /opt/Tender_intelligence && docker compose up -d --build" ]
+  - [ bash, -lc, "sleep 10 && cd /opt/Tender_intelligence && ./scripts/verify_deployment.sh" ]
+
+final_message: "Tender Intelligence cloud-init finished. Check: sudo cloud-init status --long"
