@@ -15,6 +15,7 @@ Local-first and cloud-ready Tender Intelligence & Bid Decision System for engine
 - Zero-cost policy blocking paid/unknown providers from core execution.
 - Docker/Linux deployment files for a 24/7 cloud test server.
 - Cloudflare Tunnel-ready configuration without committing secrets.
+- GitHub Actions tests both the Python application and a Docker health smoke test.
 
 ## Local Windows
 
@@ -26,6 +27,7 @@ Use `INSTALL.bat` then `START.bat`.
 cp .env.cloud.example .env
 chmod +x scripts/*.sh
 ./scripts/cloud_start.sh
+./scripts/verify_deployment.sh
 ```
 
 For Cloudflare Tunnel, add a real `CLOUDFLARE_TUNNEL_TOKEN` only to the server `.env`, then:
@@ -34,7 +36,11 @@ For Cloudflare Tunnel, add a real `CLOUDFLARE_TUNNEL_TOKEN` only to the server `
 ./scripts/cloud_start_with_cloudflare.sh
 ```
 
-See `CLOUD_DEPLOYMENT.md`.
+Deployment guides:
+
+- `CLOUD_DEPLOYMENT.md` — generic Linux/Docker/Cloudflare deployment.
+- `DEPLOY_ORACLE_ALWAYS_FREE.md` — Oracle Cloud Always Free oriented deployment.
+- `DEPLOYMENT_ACCEPTANCE.md` — final 24/7 acceptance checklist.
 
 ## Health
 
