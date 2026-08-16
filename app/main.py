@@ -50,11 +50,11 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
     urgent = db.scalar(select(func.count(Tender.id)).where(Tender.urgency_level.in_(['URGENT','CRITICAL']))) or 0
     rejected = db.scalar(select(func.count(Tender.id)).where(Tender.tender_status == 'HARD_REJECTED')) or 0
     auto = db.scalar(select(func.count(Tender.id)).where(Tender.discovery_candidate_id.is_not(None))) or 0
-    return templates.TemplateResponse('dashboard.html', {'request':request,'tenders':tenders,'kpis':{'total':total,'high':high,'urgent':urgent,'rejected':rejected,'auto':auto},'zero_cost':ZERO_COST_MODE})
+    return templates.TemplateResponse(request=request, name='dashboard.html', context={'tenders':tenders,'kpis':{'total':total,'high':high,'urgent':urgent,'rejected':rejected,'auto':auto},'zero_cost':ZERO_COST_MODE})
 
 @app.get('/tenders/new', response_class=HTMLResponse)
 def new_tender(request: Request):
-    return templates.TemplateResponse('new_tender.html', {'request':request})
+    return templates.TemplateResponse(request=request, name='new_tender.html', context={})
 
 @app.post('/tenders/new')
 async def create_tender(
@@ -99,7 +99,7 @@ async def create_tender(
 def tender_detail(tender_id: int, request: Request, db: Session = Depends(get_db)):
     t = db.get(Tender, tender_id)
     if not t: raise HTTPException(404)
-    return templates.TemplateResponse('detail.html', {'request':request,'t':t})
+    return templates.TemplateResponse(request=request, name='detail.html', context={'t':t})
 
 @app.post('/tenders/{tender_id}/decision')
 def set_decision(tender_id: int, decision: str = Form(...), db: Session = Depends(get_db)):
@@ -123,7 +123,7 @@ def discovery_home(request: Request, db: Session = Depends(get_db)):
         'runs':db.scalar(select(func.count(SearchRun.id))) or 0,
     }
     recent=db.scalars(select(DiscoveryCandidate).order_by(DiscoveryCandidate.created_at.desc()).limit(30)).all()
-    return templates.TemplateResponse('discovery.html',{'request':request,'k':k,'recent':recent,'zero_cost':ZERO_COST_MODE,'enabled':DISCOVERY_ENABLED})
+    return templates.TemplateResponse(request=request, name='discovery.html', context={'k':k,'recent':recent,'zero_cost':ZERO_COST_MODE,'enabled':DISCOVERY_ENABLED})
 
 @app.post('/discovery/bootstrap')
 def discovery_bootstrap_route(db: Session=Depends(get_db)):
@@ -149,14 +149,14 @@ def run_full_route(db: Session=Depends(get_db)):
 def sources_list(request: Request, db: Session=Depends(get_db)):
     discovery_bootstrap(db)
     rows=db.scalars(select(Source).order_by(Source.trust_score.desc(),Source.created_at.desc())).all()
-    return templates.TemplateResponse('sources.html',{'request':request,'sources':rows,'zero_cost':ZERO_COST_MODE})
+    return templates.TemplateResponse(request=request, name='sources.html', context={'sources':rows,'zero_cost':ZERO_COST_MODE})
 
 @app.get('/sources/{source_id}', response_class=HTMLResponse)
 def source_detail(source_id:int,request:Request,db:Session=Depends(get_db)):
     s=db.get(Source,source_id)
     if not s: raise HTTPException(404)
     scans=db.scalars(select(SourceScan).where(SourceScan.source_id==source_id).order_by(SourceScan.started_at.desc()).limit(30)).all()
-    return templates.TemplateResponse('source_detail.html',{'request':request,'s':s,'scans':scans})
+    return templates.TemplateResponse(request=request, name='source_detail.html', context={'s':s,'scans':scans})
 
 @app.post('/sources/{source_id}/profile')
 def source_profile_route(source_id:int,db:Session=Depends(get_db)):
@@ -203,7 +203,7 @@ def discovery_run_api(db:Session=Depends(get_db)):
 @app.get('/system/doctor', response_class=HTMLResponse)
 def doctor(request: Request):
     ar = agent_reach_doctor(); ollama = ollama_health()
-    return templates.TemplateResponse('doctor.html', {'request':request,'agent_reach':ar,'ollama':ollama,'zero_cost':ZERO_COST_MODE,'discovery_enabled':DISCOVERY_ENABLED,'providers':provider_status()})
+    return templates.TemplateResponse(request=request, name='doctor.html', context={'agent_reach':ar,'ollama':ollama,'zero_cost':ZERO_COST_MODE,'discovery_enabled':DISCOVERY_ENABLED,'providers':provider_status()})
 
 @app.get('/api/v1/health')
 def api_health():
