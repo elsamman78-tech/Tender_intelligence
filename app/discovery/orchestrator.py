@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from ..models import Source, DiscoveryCandidate
 from ..config import DISCOVERY_QUERY_BATCH
 from .source_registry import bootstrap_sources
-from .query_engine import bootstrap_queries, select_query_batch, run_query
+from .query_engine import bootstrap_queries, select_query_batch, run_query_fanout
 from .scanner import scan_source
 from .candidates import validate_candidate
 from .profiler import profile_source
@@ -12,6 +12,7 @@ from .file_discovery import index_candidate_documents
 
 def bootstrap(db: Session):
     return {'sources_added':bootstrap_sources(db),'queries_added':bootstrap_queries(db)}
+
 
 def run_known_sources(db: Session, limit: int|None=None):
     q=select(Source).where(Source.enabled==1, Source.lifecycle_status.in_(['ACTIVE','VERIFIED'])).order_by(Source.priority.asc(),Source.trust_score.desc())
@@ -28,24 +29,37 @@ def run_known_sources(db: Session, limit: int|None=None):
             if x.status=='FAILED': summary['failed']+=1
     return summary
 
+
 def run_open_discovery(db: Session, limit: int|None=None):
     qs=select_query_batch(db,limit or DISCOVERY_QUERY_BATCH)
-    out={'queries':0,'results':0,'new_domains':0,'new_candidates':0,'failed':0,'providers':{}}
+    out={'queries':0,'provider_runs':0,'results':0,'unique_results':0,'new_domains':0,'new_candidates':0,'failed':0,'providers':{}}
     for q in qs:
-        r=run_query(db,q); out['queries']+=1; out['results']+=r.get('results',0); out['new_domains']+=r.get('new_domains',0); out['new_candidates']+=r.get('new_candidates',0)
+        r=run_query_fanout(db,q)
+        out['queries']+=1
+        out['results']+=r.get('results',0); out['unique_results']+=r.get('unique_results',0)
+        out['new_domains']+=r.get('new_domains',0); out['new_candidates']+=r.get('new_candidates',0)
+        for pr in r.get('provider_runs',[]):
+            out['provider_runs']+=1
+            name=pr.get('provider','UNKNOWN')
+            bucket=out['providers'].setdefault(name,{'runs':0,'ok':0,'results':0,'new_candidates':0})
+            bucket['runs']+=1
+            if pr.get('ok'): bucket['ok']+=1
+            bucket['results']+=pr.get('results',0); bucket['new_candidates']+=pr.get('new_candidates',0)
         if not r.get('ok'): out['failed']+=1
-        if r.get('provider'): out['providers'][r['provider']]=out['providers'].get(r['provider'],0)+1
     return out
+
 
 def validate_candidates(db: Session, limit: int=50):
     candidates=db.scalars(select(DiscoveryCandidate).where(DiscoveryCandidate.validation_status.in_(['NEW','FETCH_FAILED'])).order_by(DiscoveryCandidate.confidence.desc()).limit(limit)).all()
-    out={'reviewed':0,'promoted':0,'rejected':0,'fetch_failed':0}
+    out={'reviewed':0,'promoted':0,'rejected':0,'fetch_failed':0,'social_leads':0}
     for c in candidates:
         r=validate_candidate(db,c); out['reviewed']+=1
         if r['status']=='PROMOTED': out['promoted']+=1
         elif r['status']=='REJECTED': out['rejected']+=1
         elif r['status']=='FETCH_FAILED': out['fetch_failed']+=1
+        elif r['status']=='LEAD_REQUIRES_OFFICIAL_SOURCE': out['social_leads']+=1
     return out
+
 
 def profile_candidates(db: Session, limit: int=20):
     sources=db.scalars(select(Source).where(Source.lifecycle_status=='CANDIDATE',Source.enabled==1).order_by(Source.created_at.desc()).limit(limit)).all()
@@ -55,6 +69,7 @@ def profile_candidates(db: Session, limit: int=20):
         if r.get('ok'): out['verified']+=1
         else: out['failed']+=1
     return out
+
 
 def run_full_cycle(db: Session, source_limit: int|None=None, query_limit: int|None=None, candidate_limit: int=50):
     boot=bootstrap(db)
