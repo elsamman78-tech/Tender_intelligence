@@ -18,3 +18,30 @@ jobs:
       - run: python -m pytest -q
       - name: Import smoke test
         run: python -c "from app.main import app; print(app.title)"
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t tender-intelligence:ci .
+      - name: Start container
+        run: |
+          docker run -d --name tender-intelligence-ci \
+            -e ZERO_COST_MODE=true \
+            -e DISCOVERY_ENABLED=false \
+            -p 127.0.0.1:8000:8000 \
+            tender-intelligence:ci
+      - name: Health smoke test
+        run: |
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:8000/api/v1/health; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs tender-intelligence-ci
+          exit 1
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs tender-intelligence-ci || true
