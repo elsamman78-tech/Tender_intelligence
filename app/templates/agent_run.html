@@ -1,0 +1,11 @@
+{% extends 'base.html' %}{% block content %}
+<div class="section-head"><div><h1>Agent Run #{{run.id}}</h1><p class="muted">{{run.goal}}</p></div><a class="button secondary" href="/agents">رجوع للـAgents</a></div>
+<section class="kpis four"><div><b>{{run.status}}</b><span>Status</span></div><div><b>{{run.mode}}</b><span>Mode</span></div><div><b>{{run.cycles_completed}}/{{run.cycles_requested}}</b><span>Cycles</span></div><div><b>{{run.model or '—'}}</b><span>Model</span></div></section>
+{% if run.error %}<div class="banner"><b>Error:</b> {{run.error}}</div>{% endif %}
+<section class="card"><h2>الخطوات القابلة للمراجعة</h2><table><thead><tr><th>Cycle</th><th>Agent</th><th>Action</th><th>Tool</th><th>Status</th><th>Rationale</th></tr></thead><tbody>{% for s in run.steps %}<tr><td>{{s.cycle}}</td><td>{{s.agent}}</td><td>{{s.action}}</td><td>{{s.tool or '—'}}</td><td><span class="badge {% if s.status=='DONE' %}ok{% elif s.status=='FAILED' %}bad{% endif %}">{{s.status}}</span></td><td>{{s.rationale or '—'}}</td></tr><tr><td colspan="6"><details><summary>Input / Output</summary><pre class="raw">INPUT
+{{s.input}}
+
+OUTPUT
+{{s.output}}</pre></details></td></tr>{% else %}<tr><td colspan="6">لا توجد خطوات مسجلة.</td></tr>{% endfor %}</tbody></table></section>
+<section class="card"><h2>Final Summary</h2><pre class="raw">{{run.summary}}</pre></section>
+{% endblock %}
