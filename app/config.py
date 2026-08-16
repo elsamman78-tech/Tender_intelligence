@@ -17,6 +17,7 @@ OLLAMA_URL = os.getenv('OLLAMA_URL', 'http://127.0.0.1:11434')
 OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'qwen3:4b')
 AUTONOMOUS_AGENTS_ENABLED = os.getenv('AUTONOMOUS_AGENTS_ENABLED', 'true').lower() == 'true'
 AUTONOMOUS_AGENT_MAX_CYCLES = max(1, min(int(os.getenv('AUTONOMOUS_AGENT_MAX_CYCLES', '2')), 3))
+AUTONOMOUS_AGENT_INTERVAL_MINUTES = max(60, int(os.getenv('AUTONOMOUS_AGENT_INTERVAL_MINUTES', '720')))
 TIMEZONE = os.getenv('TIMEZONE', 'Africa/Cairo')
 AGENT_REACH_ENABLED = os.getenv('AGENT_REACH_ENABLED', 'false').lower() == 'true'
 AGENT_REACH_SEARCH_COMMAND = os.getenv('AGENT_REACH_SEARCH_COMMAND', '').strip()
