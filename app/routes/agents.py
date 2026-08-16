@@ -6,8 +6,10 @@ from sqlalchemy.orm import Session
 from ..config import BASE_DIR, AUTONOMOUS_AGENTS_ENABLED, AUTONOMOUS_AGENT_MAX_CYCLES, AUTONOMOUS_AGENT_INTERVAL_MINUTES
 from ..db import get_db
 from ..agents.loop import agent_health, run_discovery_supervisor, recent_agent_runs, agent_run_detail
+from .country_coverage import router as country_coverage_router
 
 router=APIRouter()
+router.include_router(country_coverage_router)
 templates=Jinja2Templates(directory=str(BASE_DIR / 'app' / 'templates'))
 
 
