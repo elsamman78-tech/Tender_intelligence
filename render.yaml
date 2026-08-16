@@ -1,0 +1,36 @@
+services:
+  - type: web
+    name: tender-intelligence-demo
+    runtime: docker
+    plan: free
+    region: frankfurt
+    branch: main
+    autoDeployTrigger: off
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: ZERO_COST_MODE
+        value: "true"
+      - key: DISCOVERY_ENABLED
+        value: "true"
+      - key: AUTO_PROMOTE_TENDERS
+        value: "true"
+      - key: DDG_HTML_ENABLED
+        value: "true"
+      - key: DISCOVERY_SCAN_INTERVAL_MINUTES
+        value: "360"
+      - key: OPEN_DISCOVERY_INTERVAL_MINUTES
+        value: "720"
+      - key: DISCOVERY_QUERY_BATCH
+        value: "4"
+      - key: DISCOVERY_MAX_RESULTS_PER_QUERY
+        value: "10"
+      - key: DISCOVERY_REQUEST_TIMEOUT
+        value: "20"
+      - key: AGENT_REACH_ENABLED
+        value: "false"
+      - key: DATABASE_URL
+        value: "sqlite:////tmp/tender_intelligence_demo.db"
+      - key: TIMEZONE
+        value: "Africa/Cairo"
+      - key: MAX_UPLOAD_MB
+        value: "20"
