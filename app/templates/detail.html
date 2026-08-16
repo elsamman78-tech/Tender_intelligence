@@ -1,0 +1,8 @@
+{% extends 'base.html' %}{% block content %}
+<section class="hero"><div><small>{{t.project_country or 'Country unknown'}}</small><h1>{{t.title}}</h1><p>{{t.client_name or ''}}</p></div><div class="bigscore"><b>{{'%.0f'|format(t.overall_score or 0)}}</b><span>/100</span><small>{{t.recommendation}}</small></div></section>
+<div class="grid3"><section class="card"><h3>الوقت</h3><b>{{t.business_days_remaining if t.business_days_remaining is not none else '—'}} يوم عمل</b><p>{{t.urgency_level}}</p></section><section class="card"><h3>النطاق</h3><b>{{t.scope_classification or 'UNKNOWN'}}</b><p>{{t.hard_reject_reason or 'No hard reject'}}</p></section><section class="card"><h3>AI</h3><b>{{t.ai_status}}</b><p>Local Ollama only</p></section></div>
+<section class="card"><h2>Score Breakdown</h2>{% if t.score_json %}<div class="breakdown">{% for k,v in t.score_json.components.items() %}<div><span>{{k}}</span><b>{{v}}</b></div>{% endfor %}</div>{% endif %}</section>
+{% if t.analysis_json %}<section class="card"><h2>Local AI Analysis</h2><pre>{{t.analysis_json | tojson(indent=2)}}</pre></section>{% endif %}
+<section class="card"><h2>قرار Business Development</h2><form method="post" action="/tenders/{{t.id}}/decision" class="inline"><select name="decision"><option>UNDECIDED</option><option>BID</option><option>NO_BID</option><option>HOLD</option></select><button>حفظ القرار</button></form></section>
+{% if t.raw_text %}<details class="card"><summary>النص المستخرج</summary><pre class="raw">{{t.raw_text[:30000]}}</pre></details>{% endif %}
+{% endblock %}

@@ -1,0 +1,4 @@
+{% extends 'base.html' %}{% block content %}
+<section class="card"><h2>System Doctor</h2><div class="doctor"><div><b>Core</b><span>✅ Operational</span></div><div><b>Zero-Cost Mode</b><span>{{'✅ ACTIVE' if zero_cost else '⚠ OFF'}}</span></div><div><b>Discovery Scheduler</b><span>{{'✅ ACTIVE' if discovery_enabled else '⚠ OFF'}}</span></div><div><b>Ollama</b><span>{{'✅ Healthy' if ollama.ok else '⚠ Unavailable (optional)'}}</span></div><div><b>Agent-Reach</b><span>{{'✅ Healthy' if agent_reach.ok else '⚠ Optional / unavailable'}}</span></div></div>
+<h3>Search Providers</h3><div class="doctor">{% for p in providers %}<div><b>{{p.name}}</b><span>{{'✅ Available' if p.available else '⚠ Not configured'}} · {{p.cost_class}}</span></div>{% endfor %}</div>
+<h3>Agent-Reach doctor output</h3><pre>{{agent_reach.output}}</pre></section>{% endblock %}

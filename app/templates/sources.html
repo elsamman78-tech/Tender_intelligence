@@ -1,0 +1,5 @@
+{% extends 'base.html' %}{% block content %}
+<div class="section-head"><div><h1>شبكة المصادر</h1><p class="muted">Known Sources + New Source Discovery</p></div><a class="button" href="/discovery">الاكتشاف</a></div>
+<section class="card"><table><thead><tr><th>المصدر</th><th>النوع</th><th>الدولة</th><th>الحالة</th><th>Health</th><th>Trust</th><th>Priority</th><th>Cost</th></tr></thead><tbody>
+{% for s in sources %}<tr><td><a href="/sources/{{s.id}}"><b>{{s.name}}</b></a><small>{{s.domain or ''}}</small></td><td>{{s.source_type}}</td><td>{{s.country or 'Global'}}</td><td>{{s.lifecycle_status}}</td><td><span class="badge {% if s.health_status=='HEALTHY' %}ok{% elif s.health_status in ['DEGRADED','FAILED'] %}bad{% endif %}">{{s.health_status}}</span></td><td>{{s.trust_score}}</td><td>{{s.priority}}</td><td>{{s.cost_class}}</td></tr>{% endfor %}
+</tbody></table></section>{% endblock %}

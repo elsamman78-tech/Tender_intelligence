@@ -1,0 +1,7 @@
+{% extends 'base.html' %}{% block content %}
+<div class="banner success">ZERO-COST MODE: {% if zero_cost %}ACTIVE{% else %}OFF{% endif %} — Paid core providers: 0</div>
+<section class="kpis five"><div><b>{{kpis.total}}</b><span>إجمالي الفرص</span></div><div><b>{{kpis.auto}}</b><span>اكتشاف تلقائي</span></div><div><b>{{kpis.high}}</b><span>Score ≥ 80</span></div><div><b>{{kpis.urgent}}</b><span>عاجل / حرج</span></div><div><b>{{kpis.rejected}}</b><span>Hard Reject</span></div></section>
+<section class="card"><div class="section-head"><h2>الفرص</h2><div><a class="button secondary" href="/discovery">محرك الاكتشاف</a> <a class="button" href="/tenders/new">+ إضافة مناقصة</a></div></div>
+<table><thead><tr><th>Score</th><th>المناقصة</th><th>الدولة</th><th>المصدر</th><th>أيام العمل</th><th>التوصية</th><th>قرار BD</th></tr></thead><tbody>
+{% for t in tenders %}<tr><td><span class="score">{{ '%.0f'|format(t.overall_score or 0) }}</span></td><td><a href="/tenders/{{t.id}}"><b>{{t.title}}</b></a><small>{{t.client_name or ''}}</small></td><td>{{t.project_country or '—'}}</td><td>{% if t.discovery_candidate_id %}<span class="badge ok">AUTO</span>{% else %}<span class="badge">MANUAL</span>{% endif %}<small>{{t.discovery_method or ''}}</small></td><td>{{t.business_days_remaining if t.business_days_remaining is not none else '—'}}<small>{{t.urgency_level}}</small></td><td>{{t.recommendation or '—'}}</td><td>{{t.bd_decision}}</td></tr>{% else %}<tr><td colspan="7">لا توجد مناقصات بعد.</td></tr>{% endfor %}
+</tbody></table></section>{% endblock %}

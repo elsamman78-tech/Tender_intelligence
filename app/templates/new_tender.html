@@ -1,0 +1,11 @@
+{% extends 'base.html' %}{% block content %}
+<section class="card narrow"><h2>إضافة وتحليل مناقصة</h2><p class="muted">أدخل رابطًا عامًا أو الصق النص أو ارفع PDF. التحليل بالـOllama اختياري.</p>
+<form method="post" enctype="multipart/form-data">
+<label>اسم المناقصة<input name="title" required></label>
+<div class="grid2"><label>العميل<input name="client_name"></label><label>الدولة<input name="project_country" placeholder="Saudi Arabia"></label></div>
+<div class="grid2"><label>Reference<input name="external_reference"></label><label>الموعد النهائي<input name="submission_deadline" type="date"></label></div>
+<label>الرابط الأصلي<input name="source_url" type="url"></label>
+<label>PDF<input name="file" type="file" accept="application/pdf"></label>
+<label>أو الصق نص الإعلان / TOR<textarea name="pasted_text" rows="12"></textarea></label>
+<label class="check"><input type="checkbox" name="use_ai" value="true"> تشغيل Local AI عبر Ollama إذا كان متاحًا</label>
+<button>تحليل وحفظ</button></form></section>{% endblock %}
