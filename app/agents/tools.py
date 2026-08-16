@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from sqlalchemy import select, func
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..geography import TARGET_COUNTRIES, PRIORITY_COUNTRIES, normalize_country, is_target_country
+from ..geography import PRIORITY_COUNTRIES, normalize_country, is_target_country
 from ..models import Source, DiscoveryQuery, DiscoveryCandidate
 from ..discovery.coverage import coverage_snapshot, run_coverage_benchmark
+from ..discovery.country_coverage import country_coverage_snapshot
 from ..discovery.orchestrator import run_known_sources, run_open_discovery, validate_candidates, profile_candidates
 from ..discovery.query_engine import run_query_fanout
 from ..discovery.scanner import scan_source
@@ -56,7 +57,7 @@ TOOL_SCHEMAS = {
             'parameters':{'type':'object','required':['country'],'properties':{
                 'country':{'type':'string'},
                 'purpose':{'type':'string','enum':['SOURCE_SEARCH','TENDER_SEARCH','PRIVATE_SOURCE_SEARCH','LINKEDIN_SIGNAL','FACEBOOK_SIGNAL','X_SIGNAL','EARLY_SIGNAL']},
-                'query_limit':{'type':'integer','minimum':1,'maximum':10},
+                'query_limit':{'type':'integer','minimum':1,'maximum':10}
             }}
         }
     },
@@ -164,8 +165,6 @@ class ToolRuntime:
         qs=self.db.scalars(select(DiscoveryQuery).where(
             DiscoveryQuery.enabled==True, DiscoveryQuery.country==c, DiscoveryQuery.purpose==purpose
         ).order_by(DiscoveryQuery.priority.desc(),DiscoveryQuery.last_run_at.asc()).limit(max(1,min(int(query_limit),10)))).all()
-        # Some social/regional queries intentionally have no country. If no direct social query exists,
-        # create one bounded query record so future runs can learn from it.
         if not qs and purpose in {'LINKEDIN_SIGNAL','FACEBOOK_SIGNAL','X_SIGNAL','PRIVATE_SOURCE_SEARCH','EARLY_SIGNAL'}:
             domain={'LINKEDIN_SIGNAL':'linkedin.com/posts','FACEBOOK_SIGNAL':'facebook.com','X_SIGNAL':'x.com'}.get(purpose)
             if domain:
@@ -185,18 +184,13 @@ class ToolRuntime:
         return {'ok':bool(qs),'country':c,'purpose':purpose,'queries_run':len(qs),'runs':results}
 
     def tool_coverage_gaps(self, limit: int=10):
+        matrix=country_coverage_snapshot(self.db)['countries']
         out=[]
-        for country in TARGET_COUNTRIES:
-            total=self.db.scalar(select(func.count(Source.id)).where(Source.country==country)) or 0
-            trusted=self.db.scalar(select(func.count(Source.id)).where(
-                Source.country==country, Source.lifecycle_status.in_(['ACTIVE','VERIFIED']), Source.trust_score>=70
-            )) or 0
-            healthy=self.db.scalar(select(func.count(Source.id)).where(Source.country==country,Source.health_status=='HEALTHY')) or 0
-            source_queries=self.db.scalar(select(func.count(DiscoveryQuery.id)).where(
-                DiscoveryQuery.country==country,DiscoveryQuery.purpose=='SOURCE_SEARCH'
-            )) or 0
-            score=(trusted*5)+(healthy*3)+min(total,5)+min(source_queries,2)
-            out.append({'country':country,'priority':100 if country in PRIORITY_COUNTRIES else 70,
-                        'sources':total,'trusted_sources':trusted,'healthy_sources':healthy,'source_queries':source_queries,'coverage_score':score})
-        out.sort(key=lambda x:(x['coverage_score'], -x['priority'], x['country']))
-        return {'count':min(len(out),max(1,min(int(limit),30))),'gaps':out[:max(1,min(int(limit),30))]}
+        for row in matrix:
+            score=(row['verified_sources']*5)+(row['healthy_sources']*3)+min(row['sources'],5)+min(row['source_queries'],2)
+            out.append({'country':row['country'],'priority':row['priority'],'sources':row['sources'],
+                        'trusted_sources':row['verified_sources'],'healthy_sources':row['healthy_sources'],
+                        'source_queries':row['source_queries'],'coverage_score':score,'status':row['status']})
+        out.sort(key=lambda x:(x['coverage_score'],-x['priority'],x['country']))
+        n=max(1,min(int(limit),30))
+        return {'count':min(len(out),n),'gaps':out[:n]}
