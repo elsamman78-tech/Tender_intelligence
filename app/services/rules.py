@@ -1,7 +1,7 @@
 import re
+from ..geography import is_excluded_country, normalize_country, PRIORITY_COUNTRIES, is_target_country
 
-BLACKLIST = {'palestine','occupied palestinian territory','occupied territories','india','iran'}
-TIER1 = {'egypt','saudi arabia','saudi','ksa','united arab emirates','uae','libya','bangladesh'}
+TIER1 = {x.lower() for x in PRIORITY_COUNTRIES} | {'saudi','ksa','united arab emirates'}
 
 CONSULTING_TERMS = [
     'consultancy','consulting services','consultant','engineering services','detailed design',
@@ -44,9 +44,8 @@ def classify_scope(text: str) -> tuple[str, str | None]:
 
 
 def evaluate_hard_rules(country: str | None, text: str, is_expired: bool) -> dict:
-    c = (country or '').strip().lower()
-    if c in BLACKLIST:
-        return {'hard_reject': True, 'reason': 'BLACKLIST_COUNTRY', 'scope': 'N/A'}
+    if is_excluded_country(country):
+        return {'hard_reject': True, 'reason': 'EXCLUDED_GEOGRAPHY', 'scope': 'N/A'}
     if is_expired:
         return {'hard_reject': False, 'reason': 'EXPIRED', 'scope': classify_scope(text)[0]}
     scope, scope_reject = classify_scope(text)
@@ -56,9 +55,11 @@ def evaluate_hard_rules(country: str | None, text: str, is_expired: bool) -> dic
 
 
 def geographic_score(country: str | None) -> int:
-    c = (country or '').strip().lower()
-    if c in BLACKLIST:
+    c = normalize_country(country)
+    if is_excluded_country(c):
         return 0
-    if c in TIER1:
+    if (c or '').lower() in TIER1:
         return 15
-    return 9 if c else 5
+    if is_target_country(c):
+        return 9
+    return 5 if not c else 6
