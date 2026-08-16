@@ -15,6 +15,7 @@ from .services.pdf_parser import extract_pdf
 from .services.analysis import run_analysis
 from .services.web_reader import read_url
 from .services.dedup import fingerprint as make_fingerprint
+from .geography import geography_policy_summary
 from .discovery.agent_reach import doctor as agent_reach_doctor
 from .services.ollama import health as ollama_health
 from .discovery.orchestrator import bootstrap as discovery_bootstrap, run_known_sources, run_open_discovery, validate_candidates, profile_candidates, run_full_cycle
@@ -23,6 +24,7 @@ from .discovery.profiler import profile_source
 from .discovery.scanner import scan_source
 from .discovery.scheduler import start_scheduler, stop_scheduler
 from .discovery.providers.router import provider_status
+from .discovery.coverage import coverage_snapshot, run_coverage_benchmark
 
 Base.metadata.create_all(bind=engine)
 migrate_additive()
@@ -119,11 +121,15 @@ def discovery_home(request: Request, db: Session = Depends(get_db)):
         'candidates':db.scalar(select(func.count(DiscoveryCandidate.id))) or 0,
         'new_candidates':db.scalar(select(func.count(DiscoveryCandidate.id)).where(DiscoveryCandidate.validation_status=='NEW')) or 0,
         'promoted':db.scalar(select(func.count(DiscoveryCandidate.id)).where(DiscoveryCandidate.validation_status=='PROMOTED')) or 0,
+        'social_leads':db.scalar(select(func.count(DiscoveryCandidate.id)).where(DiscoveryCandidate.validation_status=='LEAD_REQUIRES_OFFICIAL_SOURCE')) or 0,
         'queries':db.scalar(select(func.count(DiscoveryQuery.id))) or 0,
         'runs':db.scalar(select(func.count(SearchRun.id))) or 0,
     }
     recent=db.scalars(select(DiscoveryCandidate).order_by(DiscoveryCandidate.created_at.desc()).limit(30)).all()
-    return templates.TemplateResponse(request=request, name='discovery.html', context={'k':k,'recent':recent,'zero_cost':ZERO_COST_MODE,'enabled':DISCOVERY_ENABLED})
+    return templates.TemplateResponse(request=request, name='discovery.html', context={
+        'k':k,'recent':recent,'zero_cost':ZERO_COST_MODE,'enabled':DISCOVERY_ENABLED,
+        'providers':provider_status(),'coverage':coverage_snapshot(db),'geography':geography_policy_summary()
+    })
 
 @app.post('/discovery/bootstrap')
 def discovery_bootstrap_route(db: Session=Depends(get_db)):
@@ -144,6 +150,11 @@ def validate_route(db: Session=Depends(get_db)):
 @app.post('/discovery/run-full')
 def run_full_route(db: Session=Depends(get_db)):
     run_full_cycle(db,source_limit=20,query_limit=8,candidate_limit=50); return RedirectResponse('/discovery',303)
+
+@app.post('/discovery/coverage/run')
+def coverage_run_route(db: Session=Depends(get_db)):
+    run_coverage_benchmark(db,query_limit=5,result_limit=10)
+    return RedirectResponse('/discovery',303)
 
 @app.get('/sources', response_class=HTMLResponse)
 def sources_list(request: Request, db: Session=Depends(get_db)):
@@ -189,7 +200,7 @@ def candidate_validate(candidate_id:int,db:Session=Depends(get_db)):
 
 @app.get('/api/v1/discovery/status')
 def discovery_status(db:Session=Depends(get_db)):
-    return {'enabled':DISCOVERY_ENABLED,'zero_cost_mode':ZERO_COST_MODE,
+    return {'enabled':DISCOVERY_ENABLED,'zero_cost_mode':ZERO_COST_MODE,'geography':geography_policy_summary(),'providers':provider_status(),
             'sources':db.scalar(select(func.count(Source.id))) or 0,
             'source_candidates':db.scalar(select(func.count(Source.id)).where(Source.lifecycle_status=='CANDIDATE')) or 0,
             'opportunity_candidates':db.scalar(select(func.count(DiscoveryCandidate.id))) or 0,
@@ -198,6 +209,14 @@ def discovery_status(db:Session=Depends(get_db)):
 @app.post('/api/v1/discovery/run')
 def discovery_run_api(db:Session=Depends(get_db)):
     return run_full_cycle(db,source_limit=20,query_limit=8,candidate_limit=50)
+
+@app.get('/api/v1/discovery/coverage')
+def discovery_coverage_api(db:Session=Depends(get_db)):
+    return coverage_snapshot(db)
+
+@app.post('/api/v1/discovery/coverage/benchmark')
+def discovery_coverage_benchmark_api(query_limit:int=5,result_limit:int=10,db:Session=Depends(get_db)):
+    return run_coverage_benchmark(db,max(1,min(query_limit,20)),max(1,min(result_limit,30)))
 
 # ---------------- System ----------------
 @app.get('/system/doctor', response_class=HTMLResponse)
@@ -208,4 +227,4 @@ def doctor(request: Request):
 @app.get('/api/v1/health')
 def api_health():
     ar = agent_reach_doctor(timeout=8)
-    return JSONResponse({'ok':True,'zero_cost_mode':ZERO_COST_MODE,'discovery_enabled':DISCOVERY_ENABLED,'ollama':ollama_health(),'agent_reach':{'installed':ar.installed,'enabled':ar.enabled,'ok':ar.ok}})
+    return JSONResponse({'ok':True,'zero_cost_mode':ZERO_COST_MODE,'discovery_enabled':DISCOVERY_ENABLED,'providers':provider_status(),'geography':geography_policy_summary(),'ollama':ollama_health(),'agent_reach':{'installed':ar.installed,'enabled':ar.enabled,'ok':ar.ok}})
