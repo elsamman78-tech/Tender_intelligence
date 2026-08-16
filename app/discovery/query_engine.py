@@ -50,10 +50,12 @@ def generated_queries():
         pr=96 if country in PRIORITY_COUNTRIES else 68
         out.append((f'("engineering consultancy" OR "consulting services" OR "project management consultant") (tender OR RFP OR EOI OR procurement) "{country}"','en',country,'TENDER_SEARCH',pr))
         out.append((f'"{country}" ("government procurement" OR "e-procurement" OR "tender portal" OR "procurement opportunities") consultant','en',country,'SOURCE_SEARCH',pr-3))
-    # Regional private-sector and social-signal discovery. Social results are leads only.
+    # Regional private-sector, press/gazette, aggregator and social-signal discovery.
     for region,lang in REGION_PACKS:
         out.append((f'"{region}" (developer OR utility OR operator OR bank OR university OR hospital OR infrastructure) (RFP OR EOI OR tender OR procurement) (consultant OR consultancy)','en',None,'PRIVATE_SOURCE_SEARCH',78))
         out.append((f'"{region}" ("procurement portal" OR "tender portal" OR "business opportunities") engineering consultant','en',None,'SOURCE_SEARCH',76))
+        out.append((f'"{region}" (gazette OR newspaper OR "procurement notice" OR "tender notice") (consultant OR consultancy OR engineering)','en',None,'NEWS_GAZETTE_SEARCH',72))
+        out.append((f'"{region}" ("free tenders" OR "procurement notices" OR "tender aggregator") (consultant OR consultancy OR engineering)','en',None,'AGGREGATOR_LEAD_SEARCH',70))
         for domain,purpose in SOCIAL_TEMPLATES:
             out.append((f'site:{domain} "{region}" (RFP OR EOI OR tender OR procurement OR "expression of interest") (consultant OR consultancy OR "project management")','en',None,purpose,74))
     # Arabic/French/Portuguese public-web signals for markets where English indexing is weak.
