@@ -20,13 +20,38 @@ For a lightweight zero-cost test deployment:
 
 The application does not require inbound port 8000. Cloudflare Tunnel connects outbound from the VM.
 
-## 1. Create the VM
+## Fastest path: use Cloud-Init
+
+When creating the OCI instance, open **Show advanced options → Management → Initialization script / Cloud-Init** and paste the contents of:
+
+`cloud-init/oracle-ubuntu.yaml`
+
+That script automatically:
+
+1. installs Docker and Git,
+2. clones this repository to `/opt/Tender_intelligence`,
+3. creates the server `.env` from the safe example,
+4. starts the Docker application,
+5. runs the deployment verification script.
+
+After the VM starts, wait a few minutes and check:
+
+```bash
+sudo cloud-init status --long
+cd /opt/Tender_intelligence
+sudo docker compose ps
+curl http://127.0.0.1:8000/api/v1/health
+```
+
+## Manual path
+
+### 1. Create the VM
 
 In OCI Console create a Compute Instance in your home region and choose only a shape/resource explicitly marked Always Free eligible. Add your SSH public key. Do not paste private keys into GitHub or ChatGPT.
 
 If Oracle reports out-of-host-capacity, try another availability domain or later; do not switch to a paid shape just to proceed.
 
-## 2. Connect over SSH
+### 2. Connect over SSH
 
 Typical Ubuntu login:
 
@@ -34,14 +59,14 @@ Typical Ubuntu login:
 ssh ubuntu@YOUR_VM_PUBLIC_IP
 ```
 
-## 3. Clone the repository
+### 3. Clone the repository
 
 ```bash
 git clone https://github.com/elsamman78-tech/Tender_intelligence.git
 cd Tender_intelligence
 ```
 
-## 4. Install Docker
+### 4. Install Docker
 
 ```bash
 sudo bash scripts/bootstrap_ubuntu.sh
@@ -49,7 +74,7 @@ sudo bash scripts/bootstrap_ubuntu.sh
 
 Log out and back in once if the script says Docker group membership changed.
 
-## 5. Start Tender Intelligence
+### 5. Start Tender Intelligence
 
 ```bash
 cd Tender_intelligence
@@ -61,7 +86,7 @@ chmod +x scripts/*.sh
 
 The app should respond locally at `http://127.0.0.1:8000/api/v1/health`.
 
-## 6. Add Cloudflare Tunnel
+## Add Cloudflare Tunnel
 
 Create a Cloudflare Tunnel from the Cloudflare dashboard. Store its token only in the VM's `.env` file:
 
@@ -83,7 +108,7 @@ http://tender-intelligence:8000
 
 Cloudflare Tunnel is available on all Cloudflare plans. Protect the hostname with Cloudflare Access before normal use.
 
-## 7. Security acceptance
+## Security acceptance
 
 - `.env` remains untracked.
 - No API keys/tokens/passwords are committed.
@@ -91,17 +116,18 @@ Cloudflare Tunnel is available on all Cloudflare plans. Protect the hostname wit
 - Cloudflare Access is enabled for the public hostname.
 - The VM runs only Always Free eligible OCI resources.
 
-## 8. Update later
+## Update later
 
 ```bash
-cd Tender_intelligence
+cd /opt/Tender_intelligence
 ./scripts/update_from_github.sh
 ./scripts/verify_deployment.sh
 ```
 
-## 9. Backup
+## Backup
 
 ```bash
+cd /opt/Tender_intelligence
 ./scripts/backup.sh
 ```
 
