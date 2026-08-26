@@ -6,15 +6,21 @@ Write-Host '  Tender Intelligence - Local Windows Launcher'
 Write-Host '================================================'
 Write-Host ''
 
-function Test-PythonCommand {
+function Get-PythonVersion {
     param([string[]]$CommandParts)
     try {
         $exe = $CommandParts[0]
         $args = @()
         if ($CommandParts.Count -gt 1) { $args = $CommandParts[1..($CommandParts.Count-1)] }
-        & $exe @args -c "import sys; print(sys.executable); print(f'{sys.version_info.major}.{sys.version_info.minor}')" *> $null
-        return ($LASTEXITCODE -eq 0)
-    } catch { return $false }
+        $out = & $exe @args -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>$null
+        if ($LASTEXITCODE -ne 0) { return $null }
+        return (($out | Select-Object -Last 1).ToString().Trim())
+    } catch { return $null }
+}
+
+function Test-SupportedPythonVersion {
+    param([string]$Version)
+    return ($Version -eq '3.12' -or $Version -eq '3.11')
 }
 
 $candidates = @(
@@ -25,16 +31,19 @@ $candidates = @(
 )
 
 $pythonCmd = $null
+$pythonVersion = $null
 foreach ($candidate in $candidates) {
-    if (Test-PythonCommand $candidate) {
+    $candidateVersion = Get-PythonVersion $candidate
+    if (Test-SupportedPythonVersion $candidateVersion) {
         $pythonCmd = $candidate
+        $pythonVersion = $candidateVersion
         break
     }
 }
 
 if (-not $pythonCmd) {
-    Write-Host '[ERROR] No working Python 3.11/3.12 installation was found.' -ForegroundColor Red
-    Write-Host 'Your Windows Python launcher currently points to a broken Python 3.14 installation.'
+    Write-Host '[ERROR] Python 3.11 or 3.12 is required.' -ForegroundColor Red
+    Write-Host 'Python 3.14 is not accepted for this project launcher.'
     Write-Host ''
     Write-Host 'Install Python 3.12 (64-bit), then run RUN_LOCAL_WINDOWS.bat again.'
     Write-Host 'During installation enable: Add python.exe to PATH.'
@@ -44,19 +53,27 @@ if (-not $pythonCmd) {
 }
 
 $pythonLabel = ($pythonCmd -join ' ')
-Write-Host "[OK] Using Python: $pythonLabel"
+Write-Host "[OK] Using Python: $pythonLabel ($pythonVersion)"
 
-if (-not (Test-Path '.venv\Scripts\python.exe')) {
+$venvPython = Join-Path (Get-Location) '.venv\Scripts\python.exe'
+if (Test-Path $venvPython) {
+    $venvVersion = Get-PythonVersion @($venvPython)
+    if (-not (Test-SupportedPythonVersion $venvVersion)) {
+        Write-Host "[1/4] Existing virtual environment uses unsupported Python $venvVersion. Recreating it..." -ForegroundColor Yellow
+        Remove-Item -Recurse -Force '.venv'
+    } else {
+        Write-Host "[1/4] Virtual environment already exists (Python $venvVersion)."
+    }
+}
+
+if (-not (Test-Path $venvPython)) {
     Write-Host '[1/4] Creating Python virtual environment...'
     $exe = $pythonCmd[0]
     $args = @()
     if ($pythonCmd.Count -gt 1) { $args = $pythonCmd[1..($pythonCmd.Count-1)] }
     & $exe @args -m venv .venv
-} else {
-    Write-Host '[1/4] Virtual environment already exists.'
 }
 
-$venvPython = Join-Path (Get-Location) '.venv\Scripts\python.exe'
 if (-not (Test-Path $venvPython)) { throw 'Virtual environment creation failed.' }
 
 Write-Host '[2/4] Checking/installing requirements...'
@@ -69,7 +86,6 @@ if (-not (Test-Path '.env')) {
     Write-Host '[3/4] Existing .env preserved.'
 }
 
-New-Item -ItemType Directory -Force -Path 'data\uploads' | Out-Null
 New-Item -ItemType Directory -Force -Path 'backups' | Out-Null
 
 Write-Host '[4/4] Starting Tender Intelligence...'
