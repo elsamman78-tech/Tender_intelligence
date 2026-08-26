@@ -42,6 +42,8 @@ def test_source_health_template_renders():
     r=client.get('/system/source-health')
     assert r.status_code==200
     assert r.template.name=='source_health.html'
+    assert '/system/full-diagnostic/export' in r.text
+    assert 'تشخيص كامل وتصدير التقرير' in r.text
 
 
 def test_country_coverage_template_renders():
