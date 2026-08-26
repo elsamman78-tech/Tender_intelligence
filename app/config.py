@@ -4,15 +4,25 @@ from pathlib import Path
 import os
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / 'data'
+
+# Persistent storage root. When TENDER_DATA_HOME is set (for example
+# E:\\Pro\\Tenders on Windows), all durable application data lives there.
+_tender_data_home_raw = (os.getenv('TENDER_DATA_HOME') or '').strip()
+TENDER_DATA_HOME = Path(_tender_data_home_raw) if _tender_data_home_raw else BASE_DIR
+DATA_DIR = TENDER_DATA_HOME / 'data'
 UPLOAD_DIR = DATA_DIR / 'uploads'
-DATA_DIR.mkdir(exist_ok=True)
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 APP_NAME = 'Tender Intelligence Zero Cost V2 Discovery'
 ZERO_COST_MODE = os.getenv('ZERO_COST_MODE', 'true').lower() == 'true'
 ALLOW_PAID_APIS = False if ZERO_COST_MODE else os.getenv('ALLOW_PAID_APIS','false').lower() == 'true'
-DATABASE_URL = os.getenv('DATABASE_URL', f"sqlite:///{DATA_DIR / 'tenders.db'}")
+
+# An explicitly non-empty DATABASE_URL overrides SQLite. A blank value means:
+# use the persistent data-home SQLite database at <TENDER_DATA_HOME>/data/tenders.db.
+_database_url_raw = (os.getenv('DATABASE_URL') or '').strip()
+DATABASE_URL = _database_url_raw or f"sqlite:///{(DATA_DIR / 'tenders.db').as_posix()}"
+
 OLLAMA_URL = os.getenv('OLLAMA_URL', 'http://127.0.0.1:11434')
 OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'qwen3:4b')
 AUTONOMOUS_AGENTS_ENABLED = os.getenv('AUTONOMOUS_AGENTS_ENABLED', 'true').lower() == 'true'
