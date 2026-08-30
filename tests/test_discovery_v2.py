@@ -108,7 +108,7 @@ def test_award_channel_health_checks_without_creating_tender_candidates():
     assert db.scalars(select(DiscoveryCandidate)).all()==[]
 
 
-def test_source_search_does_not_create_tender_candidate(monkeypatch):
+def test_source_search_blocks_app_store_metadata_from_source_graph():
     db=make_db()
     q=DiscoveryQuery(query_text='Oman procurement portal',country='Oman',purpose='SOURCE_SEARCH',priority=90,enabled=True)
     db.add(q); db.commit()
@@ -125,11 +125,34 @@ def test_source_search_does_not_create_tender_candidate(monkeypatch):
 
     r=run_query(db,q,provider=Provider(),limit=5)
     assert r['ok'] is True
+    assert r['noise']==1
+    assert db.scalars(select(DiscoveryCandidate)).all()==[]
+    assert db.scalars(select(Source)).all()==[]
+
+
+def test_source_search_creates_portal_source_but_not_tender_candidate():
+    db=make_db()
+    q=DiscoveryQuery(query_text='Oman procurement portal',country='Oman',purpose='SOURCE_SEARCH',priority=90,enabled=True)
+    db.add(q); db.commit()
+
+    class Hit:
+        url='https://procurement.example.om/opportunities'
+        title='Oman Government Procurement Portal'
+        snippet='Official e-procurement and tender opportunities portal'
+        rank=1
+
+    class Provider:
+        name='TEST'; cost_class='FREE_PUBLIC'
+        def search(self,query,limit): return [Hit()]
+
+    r=run_query(db,q,provider=Provider(),limit=5)
+    assert r['ok'] is True
+    assert r['new_candidates']==0
     assert db.scalars(select(DiscoveryCandidate)).all()==[]
     assert len(db.scalars(select(Source)).all())==1
 
 
-def test_tender_search_prefilter_drops_non_consultancy_result(monkeypatch):
+def test_tender_search_prefilter_drops_non_consultancy_result():
     db=make_db()
     q=DiscoveryQuery(query_text='engineering consultancy tender Oman',country='Oman',purpose='TENDER_SEARCH',priority=90,enabled=True)
     db.add(q); db.commit()
