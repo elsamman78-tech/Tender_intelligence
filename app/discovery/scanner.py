@@ -10,6 +10,7 @@ from ..config import DISCOVERY_REQUEST_TIMEOUT, USER_AGENT, ZERO_COST_MODE
 from .candidates import upsert_candidate
 from .utils import clean_text
 from .connectors import scan_url
+from .connectors.crawlee_fetch import AccessBlockedError, LoginRequiredError
 
 OPPORTUNITY_CHANNEL_PURPOSES = {
     'TENDERS','EOI','RFP','RFQ','PREQUALIFICATION','ANNOUNCEMENTS','OPPORTUNITIES'
@@ -67,17 +68,20 @@ def scan_channel(db: Session, source: Source, ch: SourceChannel):
 
     try:
         if ch.purpose not in OPPORTUNITY_CHANNEL_PURPOSES:
-            # Source metadata / award / early-signal channels are health-checked elsewhere;
-            # they never feed the tender candidate queue.
+            # Metadata/award/early-signal channels never feed the tender queue.
             items=[]; connector_name=f'NON_OPPORTUNITY:{ch.access_method}'
             scan.http_status=None
         elif ch.access_method=='RSS':
             r=httpx.get(ch.url,timeout=DISCOVERY_REQUEST_TIMEOUT,follow_redirects=True,headers={'User-Agent':USER_AGENT,'Accept-Language':'ar,en,fr;q=0.8'})
-            scan.http_status=r.status_code; r.raise_for_status(); items=_rss_items(r.content)
+            scan.http_status=r.status_code
+            if r.status_code in {401,403}: raise AccessBlockedError(f'ACCESS_BLOCKED_HTTP_{r.status_code}')
+            r.raise_for_status(); items=_rss_items(r.content)
             connector_name='RSS'
         elif ch.access_method=='SITEMAP':
             r=httpx.get(ch.url,timeout=DISCOVERY_REQUEST_TIMEOUT,follow_redirects=True,headers={'User-Agent':USER_AGENT,'Accept-Language':'ar,en,fr;q=0.8'})
-            scan.http_status=r.status_code; r.raise_for_status(); items=_sitemap_items(r.text)
+            scan.http_status=r.status_code
+            if r.status_code in {401,403}: raise AccessBlockedError(f'ACCESS_BLOCKED_HTTP_{r.status_code}')
+            r.raise_for_status(); items=_sitemap_items(r.text)
             connector_name='SITEMAP'
         else:
             result=scan_url(ch.url,country=source.country)
@@ -107,6 +111,14 @@ def scan_channel(db: Session, source: Source, ch: SourceChannel):
         ch.health_status='HEALTHY'; ch.last_success_at=now; ch.last_error=None
         if source.lifecycle_status in {'VERIFIED','CANDIDATE','DISCOVERED'}:
             source.lifecycle_status='ACTIVE'
+    except LoginRequiredError as e:
+        scan.status='LOGIN_REQUIRED'; scan.error=str(e)[:1500]; scan.completed_at=datetime.utcnow()
+        source.health_status='LOGIN_REQUIRED'; source.last_error=str(e)[:1500]
+        ch.health_status='LOGIN_REQUIRED'; ch.last_error=str(e)[:1500]
+    except AccessBlockedError as e:
+        scan.status='ACCESS_BLOCKED'; scan.error=str(e)[:1500]; scan.completed_at=datetime.utcnow()
+        source.health_status='ACCESS_BLOCKED'; source.last_error=str(e)[:1500]
+        ch.health_status='ACCESS_BLOCKED'; ch.last_error=str(e)[:1500]
     except Exception as e:
         scan.status='FAILED'; scan.error=str(e)[:1500]; scan.completed_at=datetime.utcnow()
         source.health_status='DEGRADED'; source.last_error=str(e)[:1500]
