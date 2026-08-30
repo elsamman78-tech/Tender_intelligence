@@ -12,6 +12,7 @@ from app.discovery.candidates import upsert_candidate, validate_candidate
 from app.discovery.file_discovery import index_candidate_documents
 from app.discovery.scanner import scan_channel
 from app.discovery.connectors.base import PortalHtmlConnector, ConnectorResult, ExtractedOpportunity
+from app.discovery.connectors.crawlee_fetch import AccessBlockedError, LoginRequiredError
 from app.evaluation_report import build_evaluation_zip
 
 
@@ -94,6 +95,32 @@ def test_generic_scanner_uses_connector_result(monkeypatch):
     assert scan.status=='SUCCESS' and scan.new_candidates==1
     c=db.scalar(select(DiscoveryCandidate))
     assert c and c.consultancy_score>0 and 'TEST_CONNECTOR' in (c.discovery_detail or '')
+
+
+def test_access_blocked_is_source_state_not_retry_failure(monkeypatch):
+    db=make_db()
+    s=Source(name='Blocked Authority',domain='blocked.gov',base_url='https://blocked.gov',source_type='GOVERNMENT_PORTAL',country='Iraq',cost_class='FREE_PUBLIC',lifecycle_status='ACTIVE')
+    db.add(s); db.flush()
+    ch=SourceChannel(source_id=s.id,purpose='TENDERS',url='https://blocked.gov/tenders',access_method='HTML')
+    db.add(ch); db.commit()
+    monkeypatch.setattr('app.discovery.scanner.scan_url',lambda *a,**k:(_ for _ in ()).throw(AccessBlockedError('ACCESS_BLOCKED_HTTP_403')))
+    scan=scan_channel(db,s,ch)
+    assert scan.status=='ACCESS_BLOCKED'
+    assert s.health_status=='ACCESS_BLOCKED'
+    assert ch.health_status=='ACCESS_BLOCKED'
+
+
+def test_login_required_is_source_state_not_healthy(monkeypatch):
+    db=make_db()
+    s=Source(name='Login Authority',domain='login.gov',base_url='https://login.gov',source_type='GOVERNMENT_PORTAL',country='UAE',cost_class='FREE_PUBLIC',lifecycle_status='ACTIVE')
+    db.add(s); db.flush()
+    ch=SourceChannel(source_id=s.id,purpose='TENDERS',url='https://login.gov/tenders',access_method='HTML')
+    db.add(ch); db.commit()
+    monkeypatch.setattr('app.discovery.scanner.scan_url',lambda *a,**k:(_ for _ in ()).throw(LoginRequiredError('LOGIN_REQUIRED')))
+    scan=scan_channel(db,s,ch)
+    assert scan.status=='LOGIN_REQUIRED'
+    assert s.health_status=='LOGIN_REQUIRED'
+    assert ch.health_status=='LOGIN_REQUIRED'
 
 
 def test_award_channel_health_checks_without_creating_tender_candidates():
