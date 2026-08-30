@@ -90,7 +90,7 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# JavaScript-heavy procurement portals (Etimad, ESNAD, etc.) use Playwright/Crawlee.
+# JavaScript-heavy procurement portals (Etimad, ESNAD, etc.) use Playwright.
 # Install Chromium once per virtual environment. Failure is non-fatal because the
 # connector layer has an HTTP fallback and the evaluation report exposes source health.
 $browserMarker = Join-Path (Get-Location) '.venv\.tender_playwright_chromium_ready'
@@ -121,18 +121,20 @@ $workDir = (Get-Location).Path
 $serverCmd = "Set-Location '$($workDir.Replace("'","''"))'; & '$($venvPython.Replace("'","''"))' -m uvicorn app.main:app --host 0.0.0.0 --port 8000"
 Start-Process powershell.exe -ArgumentList '-NoExit','-ExecutionPolicy','Bypass','-Command',$serverCmd -WindowStyle Normal
 
+# Use the lightweight local-only liveness probe. The detailed /api/v1/health endpoint
+# intentionally checks optional integrations and can take several seconds.
 $healthy = $false
-for ($i=0; $i -lt 60; $i++) {
+for ($i=0; $i -lt 45; $i++) {
     Start-Sleep -Seconds 1
     try {
-        $r = Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 'http://127.0.0.1:8000/api/v1/health'
+        $r = Invoke-WebRequest -UseBasicParsing -TimeoutSec 3 'http://127.0.0.1:8000/api/v1/health/live'
         if ($r.StatusCode -eq 200) { $healthy = $true; break }
     } catch {}
 }
 
 if (-not $healthy) {
-    Write-Host '[WARNING] Server did not become healthy within 60 seconds.' -ForegroundColor Yellow
-    Write-Host 'Check the Tender Intelligence server window and send the error to ChatGPT.'
+    Write-Host '[WARNING] Server process started but the local liveness probe did not answer.' -ForegroundColor Yellow
+    Write-Host 'If the server window says "Application startup complete", open http://127.0.0.1:8000 manually.'
     Read-Host 'Press Enter to close'
     exit 1
 }
