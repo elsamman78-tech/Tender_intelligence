@@ -5,11 +5,18 @@ from .scoring import score_tender
 from .ollama import analyze as ollama_analyze
 
 
-def run_analysis(country: str | None, deadline, text: str, use_ai: bool = True) -> dict:
+def run_analysis(country: str | None, deadline, text: str, use_ai: bool = True, publication_date=None) -> dict:
     today = date.today()
     days = calculate_business_days(country or '', today, deadline) if deadline else None
+    age_days = (today - publication_date).days if publication_date else None
     urg = urgency(days)
-    hard = evaluate_hard_rules(country, text, is_expired=(days is not None and days <= 0))
+    hard = evaluate_hard_rules(
+        country,
+        text,
+        is_expired=(days is not None and days <= 0),
+        business_days_remaining=days,
+        publication_age_days=age_days,
+    )
 
     ai_status, ai_data = ('SKIPPED', None)
     if use_ai and not hard['hard_reject'] and text.strip():
@@ -21,6 +28,7 @@ def run_analysis(country: str | None, deadline, text: str, use_ai: bool = True) 
     )
     return {
         'business_days_remaining': days,
+        'publication_age_days': age_days,
         'urgency_level': urg,
         'hard_reject': hard['hard_reject'],
         'hard_reject_reason': hard['reason'],
