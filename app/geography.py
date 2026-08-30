@@ -9,6 +9,8 @@ Business scope approved for the current build:
 The list is explicit so discovery coverage remains measurable and auditable.
 """
 
+import re
+
 GCC = ['Saudi Arabia', 'UAE', 'Qatar', 'Kuwait', 'Oman', 'Bahrain']
 MIDDLE_EAST_ADDITIONS = ['Jordan', 'Iraq', 'Yemen']
 LOCAL_PRESENCE_COUNTRIES = ['Egypt', 'Saudi Arabia', 'UAE', 'Qatar', 'Libya', 'Yemen']
@@ -50,7 +52,7 @@ COUNTRY_ALIASES = {
     "Cote d'Ivoire":["côte d’ivoire","côte d'ivoire",'ivory coast'],
     'Palestine':['state of palestine','palestinian territories','occupied palestinian territory','فلسطين'],
     'Israel':['state of israel','إسرائيل','اسرائيل'],
-    'Syria':['syrian arab republic','سوريا'],
+    'Syria':['syrian arab republic','سyria','سوريا'],
     'Lebanon':['lebanese republic','لبنان'],
     'Turkey':['turkiye','türkiye','تركيا'],
     'Iran':['islamic republic of iran','إيران','ايران'],
@@ -93,7 +95,34 @@ def country_priority(value: str | None) -> int:
     return 0
 
 
+def _structured_country(text: str) -> str | None:
+    """Extract explicit country fields before fuzzy text matching.
+
+    Global procurement portals often place hundreds of countries on one listing page.
+    Matching the first target-country word in surrounding HTML can therefore assign an
+    unrelated notice to Yemen/Egypt/etc. Prefer the country embedded in the notice row.
+    Unknown countries are intentionally returned as raw names so the target-country rule
+    can reject them instead of silently treating them as unknown geography.
+    """
+    t=' '.join((text or '').split())
+    patterns=[
+        r'UNDP\s+Office/Country\s+[^/\s]+/([A-Z][A-Z .&()\-]{2,60}?)(?=\s+Process\b)',
+        r'Office/Country\s+[^/\s]+/([A-Z][A-Z .&()\-]{2,60}?)(?=\s+Process\b)',
+    ]
+    for pattern in patterns:
+        m=re.search(pattern,t,re.I)
+        if not m:
+            continue
+        raw=' '.join(m.group(1).strip(' -/').split())
+        if raw:
+            return normalize_country(raw)
+    return None
+
+
 def infer_country_from_text(text: str) -> str | None:
+    structured=_structured_country(text)
+    if structured:
+        return structured
     low=' '+(text or '').lower()+' '
     candidates=[]
     for alias, canonical in NORMALIZED.items():
