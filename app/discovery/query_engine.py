@@ -8,6 +8,7 @@ from .providers.router import providers
 from .source_registry import get_or_create_discovered_source
 from .candidates import upsert_candidate, score_candidate
 from .utils import hash_text, domain_of
+from .connectors.base import is_blocked_external_host
 
 SEED_QUERIES = [
     ('"engineering consultancy" tender Saudi Arabia','en','Saudi Arabia','TENDER_SEARCH',100),
@@ -94,9 +95,13 @@ def run_query(db: Session, q: DiscoveryQuery, provider=None, limit: int|None=Non
                 db.add(SearchResult(run_id=run.id,url=h.url,url_hash=uh,domain=dom,title=h.title[:2000],snippet=h.snippet[:5000],rank=h.rank))
                 urls.append(h.url)
 
+                # App stores and social/video platforms can be useful metadata leads, but they
+                # are neither procurement sources nor bid opportunities in the core database.
+                if is_blocked_external_host(h.url):
+                    noise+=1
+                    continue
+
                 if q.purpose in SOURCE_ONLY_PURPOSES:
-                    # Source discovery enriches the source graph only. A portal/app/article
-                    # discovered here is not a tender candidate.
                     _,is_new_domain=get_or_create_discovered_source(db,h.url,'OPEN_SOURCE_SEARCH',f'provider={p.name}; purpose={q.purpose}; query={q.query_text[:300]}')
                     new_domains+=1 if is_new_domain else 0
                     continue
