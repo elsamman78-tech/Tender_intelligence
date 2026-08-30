@@ -61,6 +61,57 @@ def test_generic_html_scanner_creates_candidate(monkeypatch):
     assert c and c.consultancy_score>0
 
 
+def test_tender_portal_navigation_noise_is_blocked_at_ingress(monkeypatch):
+    db=make_db()
+    s=Source(name='Bahrain Tender Board Test',domain='tenderboard.gov.bh',base_url='https://www.tenderboard.gov.bh/',source_type='GOVERNMENT_PORTAL',country='Bahrain',cost_class='FREE_PUBLIC',lifecycle_status='ACTIVE')
+    db.add(s); db.flush()
+    ch=SourceChannel(source_id=s.id,purpose='TENDERS',url='https://www.tenderboard.gov.bh/tenders/publictenders/',access_method='HTML')
+    db.add(ch); db.commit()
+    html='''<html>
+      <a href="/PrivacyPolicy/">Privacy Policy</a>
+      <a href="/FAQ/GeneralFAQ/">General FAQ</a>
+      <a href="/About/News/">News</a>
+      <a href="/Tenders/ArchivedTenders/">Archived Tenders</a>
+      <a href="/Tenders/AwardedTenders/">Awarded Tenders</a>
+      <a href="/MediaHandler/GenericHandler/Pdf/guide/Vision2030.pdf">Vision 2030</a>
+      <a href="/tenders/publictenders/#menu">Menu</a>
+      <a href="/Tenders/Details/12345">RFP Engineering Consultancy for Detailed Design and Supervision</a>
+    </html>'''
+    class R:
+        status_code=200
+        content=html.encode()
+        text=html
+        url='https://www.tenderboard.gov.bh/tenders/publictenders/'
+        def raise_for_status(self): pass
+    monkeypatch.setattr('app.discovery.scanner.httpx.get',lambda *a,**k:R())
+    scan=scan_channel(db,s,ch)
+    candidates=db.scalars(select(DiscoveryCandidate)).all()
+    assert scan.status=='SUCCESS'
+    assert scan.items_seen==1
+    assert scan.new_candidates==1
+    assert len(candidates)==1
+    assert 'Engineering Consultancy' in candidates[0].title
+
+
+def test_award_channel_health_checks_without_creating_tender_candidates(monkeypatch):
+    db=make_db()
+    s=Source(name='Awards Test',domain='award.gov',base_url='https://award.gov',source_type='GOVERNMENT_PORTAL',country='Egypt',cost_class='FREE_PUBLIC',lifecycle_status='ACTIVE')
+    db.add(s); db.flush()
+    ch=SourceChannel(source_id=s.id,purpose='AWARDS',url='https://award.gov/awards',access_method='HTML')
+    db.add(ch); db.commit()
+    class R:
+        status_code=200
+        content=b'<html><a href="/award/1">Contract Award - Engineering Consultant</a></html>'
+        text=content.decode()
+        url='https://award.gov/awards'
+        def raise_for_status(self): pass
+    monkeypatch.setattr('app.discovery.scanner.httpx.get',lambda *a,**k:R())
+    scan=scan_channel(db,s,ch)
+    assert scan.status=='SUCCESS'
+    assert scan.new_candidates==0
+    assert db.scalars(select(DiscoveryCandidate)).all()==[]
+
+
 def test_valid_candidate_promotes_to_existing_analyzer(monkeypatch):
     db=make_db()
     s=Source(name='Official',domain='official.gov',base_url='https://official.gov',source_type='GOVERNMENT_PORTAL',country='UAE',cost_class='FREE_PUBLIC',lifecycle_status='ACTIVE')
