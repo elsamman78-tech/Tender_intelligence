@@ -10,3 +10,5 @@ holidays>=0.60
 psycopg[binary]>=3.2,<4
 python-dotenv>=1.0,<2
 pytest>=8,<10
+crawlee[beautifulsoup,playwright]>=1.9.3,<2
+trafilatura>=2.2,<3
