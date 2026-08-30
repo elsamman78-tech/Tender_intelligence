@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, urlunparse
 import re
 
 from bs4 import BeautifulSoup
@@ -14,6 +14,7 @@ BLOCKED_HOSTS = {
     'play.google.com', 'apps.apple.com', 'instagram.com', 'www.instagram.com',
     'linkedin.com', 'www.linkedin.com', 'facebook.com', 'www.facebook.com',
     'x.com', 'www.x.com', 'twitter.com', 'www.twitter.com', 'youtube.com', 'www.youtube.com',
+    'forms.office.com', 'forms-db.com', 'www.forms-db.com', 'alerts.worldbank.org',
 }
 
 # These paths can never represent a live bid opportunity, even when their page wrapper
@@ -21,7 +22,8 @@ BLOCKED_HOSTS = {
 HARD_NAVIGATION_PATH_TOKENS = {
     'privacy', 'privacy-policy', 'terms', 'terms-of-use', 'contact', 'contact-us', 'contactus',
     'accessibility', 'sitemap', 'faq', 'about', 'about-us', 'careers', 'career', 'jobs',
-    'training', 'annual-report', 'annual-reports', 'history', 'news',
+    'training', 'annual-report', 'annual-reports', 'history', 'news', 'login', 'register',
+    'signup', 'sign-up', 'disclaimer', 'customercharter', 'customer-charter',
 }
 
 NAVIGATION_PATH_TOKENS = {
@@ -36,9 +38,12 @@ NAVIGATION_TEXT_TOKENS = {
     'accessibility', 'sitemap', 'faq', 'general faq', 'supplier faq', 'annual reports', 'news',
     'training courses', 'eforms', 'process', 'prequalified vendors', 'procurement plans',
     'winning bids', 'awarded tenders', 'archived tenders', 'live opening', 'tender opening results',
+    'disclaimer', 'customer charter', 'create an account in etendering', 'etendering login',
+    'subscribe to receive email alerts', 'skip to content', 'skip to footer',
     'دليل', 'الأخبار', 'اتصل بنا', 'سياسة الخصوصية', 'الشروط', 'الترسيات', 'التأمين الأولي',
     'تأجيل المناقصات', 'فض العطاءات',
 }
+PAGINATION_TEXT = {'next','previous','prev','first','frist','last','التالي','السابق','الأول','الاول'}
 
 
 @dataclass(slots=True)
@@ -78,13 +83,28 @@ def _path_words(url: str) -> set[str]:
     return {x for x in re.split(r'[^a-z0-9]+',path) if x}
 
 
+def _without_fragment(url: str) -> str:
+    try:
+        p=urlparse(url)
+        return urlunparse((p.scheme,p.netloc,p.path,p.params,p.query,''))
+    except Exception:
+        return url.split('#',1)[0]
+
+
 def looks_like_navigation(url: str, title: str, context: str='') -> bool:
     if is_blocked_external_host(url):
         return True
     low_title=clean_text(title or '').lower().strip()
-    if low_title in NAVIGATION_TEXT_TOKENS:
+    if low_title in NAVIGATION_TEXT_TOKENS or low_title in PAGINATION_TEXT or low_title.isdigit():
         return True
-    path=(urlparse(url).path or '').lower()
+    parsed=urlparse(url)
+    path=(parsed.path or '').lower()
+    if path in {'','/'}:
+        return True
+    if parsed.fragment:
+        return True
+    if 'pageindex=' in (parsed.query or '').lower() and (low_title.isdigit() or low_title in PAGINATION_TEXT):
+        return True
     if any(token in path for token in HARD_NAVIGATION_PATH_TOKENS):
         return True
     if any(token in path for token in NAVIGATION_PATH_TOKENS):
@@ -93,10 +113,6 @@ def looks_like_navigation(url: str, title: str, context: str='') -> bool:
         probe=(low_title+' '+clean_text(context or '').lower())
         if not any(k.lower() in probe for k in PROCUREMENT_TERMS):
             return True
-    # Fragments and javascript controls are navigation, not opportunities.
-    parsed=urlparse(url)
-    if parsed.fragment and not parsed.path.strip('/'):
-        return True
     return False
 
 
@@ -170,22 +186,28 @@ class PortalHtmlConnector(BaseConnector):
 
     def extract(self, html: str, base_url: str, *, country: str|None=None) -> list[ExtractedOpportunity]:
         soup=BeautifulSoup(html or '','html.parser')
-        out=[]; seen=set()
+        out=[]; seen=set(); base_no_fragment=_without_fragment(base_url).rstrip('/')
         for a in soup.find_all('a',href=True):
             href=urljoin(base_url,a.get('href') or '')
             if not href.startswith(('http://','https://')) or href in seen:
+                continue
+            if _without_fragment(href).rstrip('/') == base_no_fragment:
                 continue
             title=clean_text(a.get_text(' ',strip=True))
             context=_parent_context(a)
             if not is_individual_opportunity(href,title,context,country=country):
                 continue
-            if not title or title.lower() in {'view','details','more','read more','عرض','تفاصيل'}:
-                # Prefer contextual title; URL slug is a final fallback.
+            if not title or title.lower() in {'view','details','more','read more','click here','عرض','تفاصيل'}:
+                # Prefer contextual title; URL slug is a final fallback. Generic labels
+                # with no useful surrounding context are not allowed to become records.
                 contextual=context
-                if contextual and len(contextual)>8:
+                if contextual and len(contextual)>12 and contextual.lower()!=title.lower():
                     title=contextual[:500]
                 else:
-                    title=slug_title(href) or title or 'Tender opportunity'
+                    slug=slug_title(href)
+                    if not slug or slug.isdigit():
+                        continue
+                    title=slug
             out.append(ExtractedOpportunity(url=href,title=title[:500],snippet=context[:3000]))
             seen.add(href)
             if len(out)>=500:
