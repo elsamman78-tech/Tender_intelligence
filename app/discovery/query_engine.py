@@ -9,75 +9,73 @@ from .source_registry import get_or_create_discovered_source
 from .candidates import upsert_candidate
 from .utils import hash_text, domain_of
 
-# High-priority branch markets plus multilingual regional discovery.
+# V4: direct procurement, engineering consulting, D&B/EPC (Saudi only), files,
+# private procurers and newspaper/gazette tender advertisements. Social-person/profile
+# discovery is intentionally disabled because it produced non-actionable noise.
 SEED_QUERIES = [
     ('"engineering consultancy" tender Saudi Arabia','en','Saudi Arabia','TENDER_SEARCH',100),
     ('"project management consultant" RFP Saudi Arabia','en','Saudi Arabia','TENDER_SEARCH',100),
+    ('("design and build" OR EPC OR turnkey) (engineering OR design) tender Saudi Arabia','en','Saudi Arabia','SAUDI_DB_SEARCH',100),
+    ('("تصميم وتنفيذ" OR "تصميم وبناء") (منافسة OR مناقصة) السعودية','ar','Saudi Arabia','SAUDI_DB_SEARCH',100),
     ('"طلب إبداء اهتمام" استشاري السعودية','ar','Saudi Arabia','TENDER_SEARCH',100),
     ('"خدمات استشارية" مناقصة مصر','ar','Egypt','TENDER_SEARCH',100),
     ('"engineering consultancy" tender Egypt','en','Egypt','TENDER_SEARCH',100),
     ('"construction supervision consultant" UAE RFP','en','UAE','TENDER_SEARCH',100),
-    ('"consulting services" EOI Libya engineering','en','Libya','TENDER_SEARCH',95),
-    ('"consulting services" EOI Bangladesh engineering','en','Bangladesh','TENDER_SEARCH',95),
-    ('"request for expressions of interest" consultant Africa engineering','en',None,'TENDER_SEARCH',88),
-    ('"owner\'s engineer" tender Africa','en',None,'TENDER_SEARCH',88),
-    ('"manifestation d\'intérêt" "bureau d\'études" Afrique','fr',None,'TENDER_SEARCH',88),
-    ('"mission de contrôle" "appel d\'offres" Afrique','fr',None,'TENDER_SEARCH',85),
-    ('filetype:pdf "terms of reference" "consulting services" Africa','en',None,'FILE_SEARCH',85),
-    ('filetype:pdf RFP "project management consultant" "Middle East"','en',None,'FILE_SEARCH',85),
-    ('"procurement plan" consultant infrastructure Africa','en',None,'EARLY_SIGNAL',82),
-    ('"general procurement notice" consulting services Africa','en',None,'EARLY_SIGNAL',82),
+    ('"consulting services" EOI Libya engineering','en','Libya','TENDER_SEARCH',98),
+    ('"consulting services" EOI Yemen engineering','en','Yemen','TENDER_SEARCH',96),
+    ('"request for expressions of interest" consultant Africa engineering','en',None,'TENDER_SEARCH',90),
+    ('"owner\'s engineer" tender Africa','en',None,'TENDER_SEARCH',90),
+    ('filetype:pdf "terms of reference" "consulting services" Africa','en',None,'FILE_SEARCH',88),
+    ('filetype:pdf RFP "project management consultant" "Middle East"','en',None,'FILE_SEARCH',88),
+    ('(newspaper OR gazette OR e-paper) (tender OR RFP OR EOI) "engineering consultant" Africa','en',None,'NEWS_GAZETTE_SEARCH',84),
+    ('(جريدة OR صحيفة) (مناقصة OR "إبداء اهتمام" OR "طلب عروض") (استشاري OR تصميم OR إشراف)','ar',None,'NEWS_GAZETTE_SEARCH',84),
+    ('"procurement plan" consultant infrastructure Africa','en',None,'EARLY_SIGNAL',70),
+    ('"general procurement notice" consulting services Africa','en',None,'EARLY_SIGNAL',70),
 ]
 
 REGION_PACKS = [
-    ('Africa','en'),('Middle East','en'),('North Africa','en'),('Sub-Saharan Africa','en'),
-    ('Central Asia','en'),('South Asia','en'),('Southeast Asia','en'),('East Asia','en'),
-    ('Oceania','en'),('Eastern Europe','en'),('Northern Europe','en'),('Southern Europe','en'),
+    'Africa','North Africa','Sub-Saharan Africa','Middle East','GCC','Gulf Cooperation Council'
 ]
 
-SOCIAL_TEMPLATES = [
-    ('linkedin.com/posts','LINKEDIN_SIGNAL'),
-    ('facebook.com','FACEBOOK_SIGNAL'),
-    ('x.com','X_SIGNAL'),
-    ('twitter.com','X_SIGNAL'),
-]
+DEPRECATED_PURPOSES = {'LINKEDIN_SIGNAL','FACEBOOK_SIGNAL','X_SIGNAL','SOCIAL_SIGNAL'}
 
 
 def generated_queries():
     out=[]
-    # Every allowed country gets direct opportunity + source discovery coverage.
     for country in TARGET_COUNTRIES:
-        pr=96 if country in PRIORITY_COUNTRIES else 68
-        out.append((f'("engineering consultancy" OR "consulting services" OR "project management consultant") (tender OR RFP OR EOI OR procurement) "{country}"','en',country,'TENDER_SEARCH',pr))
-        out.append((f'"{country}" ("government procurement" OR "e-procurement" OR "tender portal" OR "procurement opportunities") consultant','en',country,'SOURCE_SEARCH',pr-3))
-    # Regional private-sector, press/gazette, aggregator and social-signal discovery.
-    for region,lang in REGION_PACKS:
-        out.append((f'"{region}" (developer OR utility OR operator OR bank OR university OR hospital OR infrastructure) (RFP OR EOI OR tender OR procurement) (consultant OR consultancy)','en',None,'PRIVATE_SOURCE_SEARCH',78))
-        out.append((f'"{region}" ("procurement portal" OR "tender portal" OR "business opportunities") engineering consultant','en',None,'SOURCE_SEARCH',76))
-        out.append((f'"{region}" (gazette OR newspaper OR "procurement notice" OR "tender notice") (consultant OR consultancy OR engineering)','en',None,'NEWS_GAZETTE_SEARCH',72))
-        out.append((f'"{region}" ("free tenders" OR "procurement notices" OR "tender aggregator") (consultant OR consultancy OR engineering)','en',None,'AGGREGATOR_LEAD_SEARCH',70))
-        for domain,purpose in SOCIAL_TEMPLATES:
-            out.append((f'site:{domain} "{region}" (RFP OR EOI OR tender OR procurement OR "expression of interest") (consultant OR consultancy OR "project management")','en',None,purpose,74))
-    # Arabic/French/Portuguese public-web signals for markets where English indexing is weak.
+        pr=96 if country in PRIORITY_COUNTRIES else 72
+        out.append((f'("engineering consultancy" OR "consulting services" OR "project management consultant" OR "construction supervision") (tender OR RFP OR EOI OR procurement) "{country}"','en',country,'TENDER_SEARCH',pr))
+        out.append((f'"{country}" ("government procurement" OR "e-procurement" OR "tender portal" OR "procurement opportunities") (consultant OR engineering)','en',country,'SOURCE_SEARCH',pr-4))
+        out.append((f'"{country}" (newspaper OR gazette OR "tender notice" OR "procurement notice") (consultant OR consultancy OR engineering)','en',country,'NEWS_GAZETTE_SEARCH',max(64,pr-10)))
+    for region in REGION_PACKS:
+        out.append((f'"{region}" (developer OR utility OR operator OR bank OR university OR hospital OR infrastructure) (RFP OR EOI OR tender OR procurement) (consultant OR consultancy OR engineering)','en',None,'PRIVATE_SOURCE_SEARCH',80))
+        out.append((f'"{region}" ("procurement portal" OR "tender portal" OR "business opportunities") engineering consultant','en',None,'SOURCE_SEARCH',78))
+        out.append((f'"{region}" (gazette OR newspaper OR "procurement notice" OR "tender notice") (consultant OR consultancy OR engineering)','en',None,'NEWS_GAZETTE_SEARCH',76))
     out.extend([
-        ('("مناقصة" OR "منافسة" OR "إبداء اهتمام") (استشاري OR "خدمات استشارية" OR إشراف OR تصميم) أفريقيا','ar',None,'TENDER_SEARCH',84),
-        ('("مناقصة" OR "منافسة" OR "إبداء اهتمام") (استشاري OR "خدمات استشارية" OR إشراف OR تصميم) "الشرق الأوسط"','ar',None,'TENDER_SEARCH',84),
-        ('("appel d’offres" OR "manifestation d’intérêt") (consultant OR "bureau d’études" OR supervision) Afrique','fr',None,'TENDER_SEARCH',84),
-        ('("concurso" OR "manifestação de interesse" OR "consultoria") engenharia África','pt',None,'TENDER_SEARCH',76),
+        ('("مناقصة" OR "منافسة" OR "إبداء اهتمام" OR "طلب عروض") (استشاري OR "خدمات استشارية" OR إشراف OR تصميم) أفريقيا','ar',None,'TENDER_SEARCH',88),
+        ('("مناقصة" OR "منافسة" OR "إبداء اهتمام" OR "طلب عروض") (استشاري OR "خدمات استشارية" OR إشراف OR تصميم) "الشرق الأوسط"','ar',None,'TENDER_SEARCH',88),
+        ('("appel d’offres" OR "manifestation d’intérêt") (consultant OR "bureau d’études" OR supervision) Afrique','fr',None,'TENDER_SEARCH',82),
     ])
     return out
 
 
 def bootstrap_queries(db: Session):
+    # Disable old social queries left by previous versions without deleting history.
+    for old in db.scalars(select(DiscoveryQuery).where(DiscoveryQuery.purpose.in_(DEPRECATED_PURPOSES))).all():
+        old.enabled=False
     added=0
     for text,lang,country,purpose,priority in SEED_QUERIES + generated_queries():
         q=db.scalar(select(DiscoveryQuery).where(DiscoveryQuery.query_text==text))
         if not q:
             db.add(DiscoveryQuery(query_text=text,language=lang,country=country,purpose=purpose,priority=priority)); added+=1
+        else:
+            q.enabled=True; q.priority=priority; q.purpose=purpose
     db.commit(); return added
 
 
 def run_query(db: Session, q: DiscoveryQuery, provider=None, limit: int|None=None):
+    if q.purpose in DEPRECATED_PURPOSES or not q.enabled:
+        return {'ok':True,'skipped':True,'reason':'DEPRECATED_OR_DISABLED_QUERY','results':0}
     plist=[provider] if provider else providers()
     if not plist:
         return {'ok':False,'error':'NO_ZERO_COST_SEARCH_PROVIDER_AVAILABLE','results':0}
