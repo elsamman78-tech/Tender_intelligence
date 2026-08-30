@@ -16,14 +16,19 @@ BLOCKED_HOSTS = {
     'x.com', 'www.x.com', 'twitter.com', 'www.twitter.com', 'youtube.com', 'www.youtube.com',
 }
 
-NAVIGATION_PATH_TOKENS = {
+# These paths can never represent a live bid opportunity, even when their page wrapper
+# contains words such as "tenders" or "procurement" in the header/footer.
+HARD_NAVIGATION_PATH_TOKENS = {
     'privacy', 'privacy-policy', 'terms', 'terms-of-use', 'contact', 'contact-us', 'contactus',
     'accessibility', 'sitemap', 'faq', 'about', 'about-us', 'careers', 'career', 'jobs',
-    'training', 'eforms', 'process', 'legislation', 'guideline', 'guidelines', 'guide',
-    'annual-report', 'annual-reports', 'history', 'board-practice', 'sectors',
-    'prequalified-vendors', 'procurement-plans', 'winning-bids', 'awarded-tenders',
-    'archived-tenders', 'opened-bids', 'opening-results', 'live-opening', 'warranties',
-    'postponement', 'postponements', 'closing-tenders',
+    'training', 'annual-report', 'annual-reports', 'history', 'news',
+}
+
+NAVIGATION_PATH_TOKENS = {
+    'eforms', 'process', 'legislation', 'guideline', 'guidelines', 'guide',
+    'board-practice', 'sectors', 'prequalified-vendors', 'procurement-plans', 'winning-bids',
+    'awarded-tenders', 'archived-tenders', 'opened-bids', 'opening-results', 'live-opening',
+    'warranties', 'postponement', 'postponements', 'closing-tenders',
 }
 
 NAVIGATION_TEXT_TOKENS = {
@@ -79,10 +84,12 @@ def looks_like_navigation(url: str, title: str, context: str='') -> bool:
     low_title=clean_text(title or '').lower().strip()
     if low_title in NAVIGATION_TEXT_TOKENS:
         return True
-    words=_path_words(url)
-    if any(token in (urlparse(url).path or '').lower() for token in NAVIGATION_PATH_TOKENS):
-        # Do not block an individual procurement record merely because its descriptive
-        # title mentions a generic token. Require weak/no procurement evidence too.
+    path=(urlparse(url).path or '').lower()
+    if any(token in path for token in HARD_NAVIGATION_PATH_TOKENS):
+        return True
+    if any(token in path for token in NAVIGATION_PATH_TOKENS):
+        # Soft navigation paths can occasionally be part of a real record URL. Only
+        # preserve them when the record itself has explicit procurement evidence.
         probe=(low_title+' '+clean_text(context or '').lower())
         if not any(k.lower() in probe for k in PROCUREMENT_TERMS):
             return True
