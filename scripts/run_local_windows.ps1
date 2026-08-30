@@ -90,6 +90,23 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
+# JavaScript-heavy procurement portals (Etimad, ESNAD, etc.) use Playwright/Crawlee.
+# Install Chromium once per virtual environment. Failure is non-fatal because the
+# connector layer has an HTTP fallback and the evaluation report exposes source health.
+$browserMarker = Join-Path (Get-Location) '.venv\.tender_playwright_chromium_ready'
+if (-not (Test-Path $browserMarker)) {
+    Write-Host '[2b/4] Preparing Chromium for JavaScript tender portals (one-time setup)...'
+    & $venvPython -m playwright install chromium
+    if ($LASTEXITCODE -eq 0) {
+        Set-Content -Path $browserMarker -Value (Get-Date).ToString('o')
+        Write-Host '[OK] JavaScript portal browser is ready.' -ForegroundColor Green
+    } else {
+        Write-Host '[WARNING] Chromium setup failed. Static connectors will still work; JS portals will use HTTP fallback.' -ForegroundColor Yellow
+    }
+} else {
+    Write-Host '[2b/4] JavaScript portal browser already prepared.'
+}
+
 if (-not (Test-Path '.env')) {
     Write-Host '[3/4] Creating local .env from .env.example...'
     Copy-Item '.env.example' '.env'
