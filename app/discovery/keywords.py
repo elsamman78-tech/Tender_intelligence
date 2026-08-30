@@ -23,6 +23,29 @@ CONSULTANCY_TERMS = [
     'assistance technique','études','supervision'
 ]
 
+# Strong evidence that the consultancy is inside the engineering / built-environment
+# mandate. Generic words such as "consultant", "study" or "design" are intentionally
+# excluded because they also occur in training, governance, communications and capacity
+# building procurements.
+ENGINEERING_DOMAIN_TERMS = [
+    'engineering consultancy','engineering consultant','engineering services','engineering design','detailed design',
+    'concept design','ifc design','design review','design and supervision','construction supervision','site supervision',
+    'supervision consultant','resident engineer','project management consultant','project management consultancy','pmc',
+    "owner's engineer",'owners engineer',"employer's representative",'architectural design','architecture consultant',
+    'structural design','structural engineering','mep design','mep engineering','electrical engineering','mechanical engineering',
+    'civil engineering','infrastructure design','infrastructure consultant','road design','roads and bridges','bridge design',
+    'transport planning','rail design','metro design','water design','wastewater design','desalination design','hydraulic design',
+    'geotechnical','surveying','topographic survey','bim','master planning','urban planning','urban development',
+    'environmental and social impact assessment','environmental impact assessment','esia','renewable energy design',
+    'power engineering','energy engineering','oil and gas engineering','pipeline design','feasibility study and design',
+    'استشارات هندسية','استشاري هندسي','مكتب هندسي','دراسات هندسية','تصميم هندسي','تصميم تفصيلي','مراجعة التصميم',
+    'إشراف على التنفيذ','اشراف على التنفيذ','إشراف هندسي','اشراف هندسي','إدارة مشروعات هندسية','ادارة مشروعات هندسية',
+    'طرق وكباري','طرق وجسور','بنية تحتية','مياه وصرف','مياه وصرف صحي','تحلية','ميكانيكا وكهرباء','كهروميكانيك',
+    'جيوتقنية','مساحة','تخطيط عمراني','مخطط عام','تقييم الأثر البيئي','مهندس المالك',
+    'bureau d’études techniques',"bureau d'etudes techniques",'ingénierie','ingenierie','génie civil','genie civil',
+    'maîtrise d’oeuvre',"maitrise d'oeuvre",'mission de contrôle technique','supervision des travaux'
+]
+
 SAUDI_DB_TERMS = [
     'design and build','design & build','design-build','epc','epcm','turnkey','engineering procurement construction',
     'contractor shall design','detailed design and construction','design, supply and construction','design construction',
