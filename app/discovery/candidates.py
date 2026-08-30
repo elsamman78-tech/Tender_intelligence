@@ -16,11 +16,16 @@ from ..services.dedup import fingerprint as make_fingerprint
 from ..geography import infer_country_from_text, is_excluded_country, is_target_country, normalize_country
 from .utils import hash_text, clean_text, keyword_score
 from .keywords import (
-    PROCUREMENT_TERMS, CONSULTANCY_TERMS, NOISE_TERMS, DOCUMENT_EXTENSIONS,
+    PROCUREMENT_TERMS, CONSULTANCY_TERMS, ENGINEERING_DOMAIN_TERMS, NOISE_TERMS, DOCUMENT_EXTENSIONS,
     ACTIONABLE_NOTICE_TERMS, SAUDI_DB_TERMS,
 )
 
 SOCIAL_DOMAINS = {'linkedin.com','www.linkedin.com','facebook.com','www.facebook.com','x.com','www.x.com','twitter.com','www.twitter.com'}
+MONTHS = {
+    'jan':1,'january':1,'feb':2,'february':2,'mar':3,'march':3,'apr':4,'april':4,'may':5,
+    'jun':6,'june':6,'jul':7,'july':7,'aug':8,'august':8,'sep':9,'sept':9,'september':9,
+    'oct':10,'october':10,'nov':11,'november':11,'dec':12,'december':12,
+}
 
 
 def infer_country(text: str, source: Source|None=None):
@@ -55,6 +60,11 @@ def score_candidate(title: str, snippet: str=''):
     return p,c,conf
 
 
+def has_engineering_domain(text: str) -> bool:
+    low=(text or '').lower()
+    return any(term.lower() in low for term in ENGINEERING_DOMAIN_TERMS)
+
+
 def _is_social_url(url: str) -> bool:
     try:
         host=(urlparse(url).hostname or '').lower()
@@ -82,14 +92,21 @@ def _actionable_notice(text: str, country: str|None) -> bool:
     signals=sum(1 for term in ACTIONABLE_NOTICE_TERMS if term in low)
     procurement=sum(1 for term in PROCUREMENT_TERMS if term in low)
     consultancy=sum(1 for term in CONSULTANCY_TERMS if term in low)
-    return procurement >= 1 and consultancy >= 1 and signals >= 1
+    engineering=has_engineering_domain(low)
+    return procurement >= 1 and consultancy >= 1 and signals >= 1 and engineering
 
 
 def upsert_candidate(db: Session, url: str, title: str='', snippet: str='', source: Source|None=None, method: str='UNKNOWN', detail: str=''):
     h=hash_text(url)
     c=db.scalar(select(DiscoveryCandidate).where(DiscoveryCandidate.url_hash==h))
     p,cs,conf=score_candidate(title,snippet)
-    country=infer_country((title or '')+' '+(snippet or ''),source)
+
+    # Prefer the record title. Global listing snippets can contain neighbouring rows from
+    # many countries and previously caused hundreds of notices to inherit "Yemen".
+    country=infer_country(title or '',source if source and source.country else None)
+    if not country and (not source or source.country):
+        country=infer_country(snippet or '',source)
+
     if c:
         c.last_seen_at=datetime.utcnow(); c.title=c.title or title; c.snippet=c.snippet or snippet
         c.procurement_score=max(c.procurement_score,p); c.consultancy_score=max(c.consultancy_score,cs); c.confidence=max(c.confidence,conf)
@@ -114,12 +131,7 @@ def upsert_candidate(db: Session, url: str, title: str='', snippet: str='', sour
 
 
 def _extract_main_html_text(html: str, final_url: str) -> str:
-    """Extract main tender content while preserving table text.
-
-    Trafilatura removes navigation/footer boilerplate that previously polluted scoring.
-    Tender portals often place deadlines/reference numbers in tables, so tables remain enabled.
-    BeautifulSoup is a deterministic fallback for unusual portal HTML.
-    """
+    """Extract main tender content while preserving table text."""
     try:
         main=trafilatura_extract(
             html or '',url=final_url,include_comments=False,include_tables=True,
@@ -149,20 +161,45 @@ def fetch_candidate_text(c: DiscoveryCandidate):
     return _extract_main_html_text(r.text,str(r.url)), str(r.url)
 
 
-def _extract_date_near(text: str, labels: list[str]):
-    label='|'.join(re.escape(x) for x in labels)
+def _two_or_four_digit_year(raw: str) -> int:
+    y=int(raw)
+    if y < 100:
+        return 2000+y if y < 70 else 1900+y
+    return y
+
+
+def _parse_date_window(window: str):
     patterns=[
-        rf'(?:{label})[^\d]{{0,40}}(20\d{{2}})[-/](\d{{1,2}})[-/](\d{{1,2}})',
-        rf'(?:{label})[^\d]{{0,40}}(\d{{1,2}})[-/](\d{{1,2}})[-/](20\d{{2}})',
+        (r'(20\d{2})[-/](\d{1,2})[-/](\d{1,2})','ymd'),
+        (r'(\d{1,2})[-/](\d{1,2})[-/](20\d{2})','dmy'),
+        (r'(\d{1,2})[-\s/](Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?|tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)[-\s/](\d{2,4})','dmony'),
+        (r'(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?|tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2})(?:,)?\s+(\d{2,4})','mondy'),
     ]
-    for idx,p in enumerate(patterns):
-        m=re.search(p,text,re.I)
-        if m:
-            try:
-                if idx==0: return date(int(m.group(1)),int(m.group(2)),int(m.group(3)))
-                return date(int(m.group(3)),int(m.group(2)),int(m.group(1)))
-            except Exception:
-                pass
+    for pattern,kind in patterns:
+        m=re.search(pattern,window,re.I)
+        if not m:
+            continue
+        try:
+            if kind=='ymd': return date(int(m.group(1)),int(m.group(2)),int(m.group(3)))
+            if kind=='dmy': return date(int(m.group(3)),int(m.group(2)),int(m.group(1)))
+            if kind=='dmony':
+                mon=MONTHS[m.group(2).lower()[:3]]
+                return date(_two_or_four_digit_year(m.group(3)),mon,int(m.group(1)))
+            mon=MONTHS[m.group(1).lower()[:3]]
+            return date(_two_or_four_digit_year(m.group(3)),mon,int(m.group(2)))
+        except Exception:
+            pass
+    return None
+
+
+def _extract_date_near(text: str, labels: list[str]):
+    if not text:
+        return None
+    label='|'.join(re.escape(x) for x in labels)
+    for m in re.finditer(rf'(?:{label})',text,re.I):
+        parsed=_parse_date_window(text[m.end():m.end()+120])
+        if parsed:
+            return parsed
     return None
 
 
@@ -175,7 +212,7 @@ def _extract_deadline(text: str):
 
 def _extract_publication_date(text: str):
     return _extract_date_near(text,[
-        'publication date','published on','date published','notice date','issue date',
+        'publication date','published on','date published','notice date','issue date','posted',
         'تاريخ النشر','تاريخ الإعلان','تاريخ الاعلان','تاريخ الطرح'
     ])
 
@@ -209,20 +246,28 @@ def validate_candidate(db: Session, c: DiscoveryCandidate, auto_promote: bool=AU
     combined=(c.title or '')+' '+text[:150000]
     p,cs,conf=score_candidate(combined,'')
     c.procurement_score=max(c.procurement_score,p); c.consultancy_score=max(c.consultancy_score,cs); c.confidence=max(c.confidence,conf)
-    c.country_guess=infer_country(combined,source) or c.country_guess
+
+    # Prefer explicit country fields in the record title, then the fetched notice body.
+    title_country=infer_country(c.title or '',source if source and source.country else None)
+    body_country=infer_country(text,source if source and source.country else None)
+    c.country_guess=title_country or body_country or c.country_guess
     c.opportunity_type_guess=opportunity_type(combined)
 
     if is_excluded_country(c.country_guess) or (c.country_guess and not is_target_country(c.country_guess)):
         c.validation_status='REJECTED'; c.rejection_reason='EXCLUDED_GEOGRAPHY'; db.commit(); return {'status':'REJECTED'}
     if c.opportunity_type_guess in {'AWARD','ADDENDUM'}:
         c.validation_status='REJECTED'; c.rejection_reason='NOT_A_NEW_BID_OPPORTUNITY'; db.commit(); return {'status':'REJECTED'}
+    if not has_engineering_domain(combined) and not _is_saudi_db(combined,c.country_guess):
+        c.validation_status='REJECTED'; c.rejection_reason='NO_ENGINEERING_DOMAIN_EVIDENCE'; db.commit(); return {'status':'REJECTED'}
     if not _actionable_notice(combined,c.country_guess):
         c.validation_status='REJECTED'; c.rejection_reason='NON_ACTIONABLE_NEWS_OR_PAGE'; db.commit(); return {'status':'REJECTED'}
     if p<12 or (cs<12 and not _is_saudi_db(combined,c.country_guess)):
         c.validation_status='REJECTED'; c.rejection_reason='CONTENT_NOT_ENGINEERING_PROCUREMENT'; db.commit(); return {'status':'REJECTED'}
 
-    deadline=_extract_deadline(text)
-    publication_date=_extract_publication_date(text)
+    # Listing rows (especially UNDP) already contain Posted/Deadline dates even when the
+    # detail-page text extractor omits them, so parse the combined evidence.
+    deadline=_extract_deadline(combined)
+    publication_date=_extract_publication_date(combined)
     result=run_analysis(c.country_guess or None,deadline,text,use_ai=False,publication_date=publication_date)
     if result['hard_reject']:
         c.validation_status='REJECTED'; c.rejection_reason=result['hard_reject_reason'] or 'HARD_RULE_REJECT'; db.commit()
