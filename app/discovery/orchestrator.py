@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 from ..models import Source, DiscoveryCandidate
 from ..config import DISCOVERY_QUERY_BATCH
@@ -85,7 +85,7 @@ def validate_new_candidates_until_idle(db: Session, batch_size: int=50, max_tota
         total['batches']+=1
         for key in ('reviewed','promoted','rejected','fetch_failed','social_leads'):
             total[key]+=r.get(key,0)
-    total['remaining_new']=db.scalar(select(DiscoveryCandidate).where(DiscoveryCandidate.validation_status=='NEW').with_only_columns(__import__('sqlalchemy').func.count(DiscoveryCandidate.id))) or 0
+    total['remaining_new']=db.scalar(select(func.count(DiscoveryCandidate.id)).where(DiscoveryCandidate.validation_status=='NEW')) or 0
     return total
 
 
