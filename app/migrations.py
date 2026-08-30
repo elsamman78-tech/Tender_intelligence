@@ -1,7 +1,7 @@
 from sqlalchemy import inspect, text
 from .db import engine
 
-# Lightweight additive migration support for upgrading an existing V1 SQLite DB.
+# Lightweight additive migration support for upgrading existing SQLite databases.
 SOURCE_COLUMNS = {
     'base_url': 'TEXT', 'languages': 'VARCHAR(120)', 'lifecycle_status': "VARCHAR(40) DEFAULT 'DISCOVERED'",
     'priority': "VARCHAR(30) DEFAULT 'EXPERIMENTAL'", 'relevance_score': 'INTEGER DEFAULT 50',
@@ -12,7 +12,15 @@ SOURCE_COLUMNS = {
     'updated_at': 'DATETIME'
 }
 TENDER_COLUMNS = {
-    'discovery_candidate_id': 'INTEGER', 'discovery_method': 'VARCHAR(60)'
+    'discovery_candidate_id': 'INTEGER',
+    'discovery_method': 'VARCHAR(60)',
+    'bid_route': "VARCHAR(60) DEFAULT 'DIRECT'",
+    'eligibility_status': "VARCHAR(60) DEFAULT 'ELIGIBILITY_TO_VERIFY'",
+    'partner_requirement': "VARCHAR(100) DEFAULT 'NONE'",
+    'submission_language': "VARCHAR(40) DEFAULT 'UNKNOWN'",
+    'language_status': "VARCHAR(40) DEFAULT 'UNKNOWN'",
+    'participation_notes': 'TEXT',
+    'source_evidence_type': "VARCHAR(50) DEFAULT 'WEB'",
 }
 
 
