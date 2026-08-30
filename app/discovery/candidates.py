@@ -5,6 +5,7 @@ import re
 import httpx
 from bs4 import BeautifulSoup
 from pypdf import PdfReader
+from trafilatura import extract as trafilatura_extract
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from ..models import DiscoveryCandidate, Tender, Source
@@ -81,8 +82,6 @@ def _actionable_notice(text: str, country: str|None) -> bool:
     signals=sum(1 for term in ACTIONABLE_NOTICE_TERMS if term in low)
     procurement=sum(1 for term in PROCUREMENT_TERMS if term in low)
     consultancy=sum(1 for term in CONSULTANCY_TERMS if term in low)
-    # A real RFP/EOI/tender notice normally has explicit procurement language plus
-    # at least one submission/reference/document signal. This blocks generic news.
     return procurement >= 1 and consultancy >= 1 and signals >= 1
 
 
@@ -114,6 +113,28 @@ def upsert_candidate(db: Session, url: str, title: str='', snippet: str='', sour
     db.add(c); db.commit(); db.refresh(c); return c,True
 
 
+def _extract_main_html_text(html: str, final_url: str) -> str:
+    """Extract main tender content while preserving table text.
+
+    Trafilatura removes navigation/footer boilerplate that previously polluted scoring.
+    Tender portals often place deadlines/reference numbers in tables, so tables remain enabled.
+    BeautifulSoup is a deterministic fallback for unusual portal HTML.
+    """
+    try:
+        main=trafilatura_extract(
+            html or '',url=final_url,include_comments=False,include_tables=True,
+            favor_recall=True,output_format='txt',
+        )
+        if main and len(clean_text(main)) >= 80:
+            return clean_text(main)[:300000]
+    except Exception:
+        pass
+    soup=BeautifulSoup(html or '','html.parser')
+    for bad in soup(['script','style','noscript','nav','footer']):
+        bad.decompose()
+    return clean_text(soup.get_text(' ',strip=True))[:300000]
+
+
 def fetch_candidate_text(c: DiscoveryCandidate):
     r=httpx.get(c.url,timeout=DISCOVERY_REQUEST_TIMEOUT,follow_redirects=True,headers={'User-Agent':USER_AGENT})
     r.raise_for_status()
@@ -125,9 +146,7 @@ def fetch_candidate_text(c: DiscoveryCandidate):
         return clean_text(text)[:300000],str(r.url)
     if c.candidate_type=='DOCUMENT' and not ('html' in ctype or 'text/' in ctype):
         raise RuntimeError('DOCUMENT_INDEXED_PARSING_NOT_YET_ENABLED_FOR_THIS_FORMAT')
-    soup=BeautifulSoup(r.text,'html.parser')
-    for bad in soup(['script','style','noscript']): bad.decompose()
-    return clean_text(soup.get_text(' ',strip=True))[:300000], str(r.url)
+    return _extract_main_html_text(r.text,str(r.url)), str(r.url)
 
 
 def _extract_date_near(text: str, labels: list[str]):
