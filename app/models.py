@@ -14,6 +14,7 @@ class Tender(Base):
     source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     external_reference: Mapped[str | None] = mapped_column(String(200), nullable=True)
     publication_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    publication_age_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     submission_deadline: Mapped[date | None] = mapped_column(Date, nullable=True)
     business_days_remaining: Mapped[int | None] = mapped_column(Integer, nullable=True)
     urgency_level: Mapped[str] = mapped_column(String(40), default='UNKNOWN')
