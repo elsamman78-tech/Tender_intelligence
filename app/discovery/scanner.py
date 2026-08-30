@@ -7,8 +7,10 @@ from sqlalchemy.orm import Session
 
 from ..models import Source, SourceChannel, SourceScan
 from ..config import DISCOVERY_REQUEST_TIMEOUT, USER_AGENT, ZERO_COST_MODE
+from ..geography import infer_country_from_text, normalize_country
 from .candidates import upsert_candidate
 from .utils import clean_text
+from .keywords import ENGINEERING_DOMAIN_TERMS, SAUDI_DB_TERMS
 from .connectors import scan_url
 from .connectors.crawlee_fetch import AccessBlockedError, LoginRequiredError
 
@@ -57,6 +59,29 @@ def _hash_items(items) -> str:
     return sha256(body.encode('utf-8','ignore')).hexdigest()
 
 
+def _has_engineering_domain(text: str) -> bool:
+    low=(text or '').lower()
+    return any(term.lower() in low for term in ENGINEERING_DOMAIN_TERMS)
+
+
+def _global_source_item_allowed(source: Source, title: str, snippet: str) -> bool:
+    """UN/MDB pages are global and can expose hundreds of unrelated procurements.
+
+    Keep country-specific portals broad enough for source-specific follow-up, but require
+    strong engineering-domain evidence before a record from a global UN/MDB listing can
+    consume validation capacity. Saudi D&B/EPC remains allowed when explicitly visible.
+    """
+    if source.country or source.source_type not in {'UN','MDB'}:
+        return True
+    probe=clean_text((title or '')+' '+(snippet or ''))
+    if _has_engineering_domain(probe):
+        return True
+    country=normalize_country(infer_country_from_text(title or ''))
+    if country=='Saudi Arabia' and any(x.lower() in probe.lower() for x in SAUDI_DB_TERMS):
+        return True
+    return False
+
+
 def scan_channel(db: Session, source: Source, ch: SourceChannel):
     scan=SourceScan(source_id=source.id,channel_id=ch.id,status='RUNNING')
     db.add(scan); db.commit(); db.refresh(scan)
@@ -88,6 +113,12 @@ def scan_channel(db: Session, source: Source, ch: SourceChannel):
             scan.http_status=result.http_status
             connector_name=result.connector_name
             items=[(x.url,x.title,x.snippet) for x in result.items]
+
+        # Global portals can otherwise inject hundreds of non-engineering tenders from
+        # every country. Filter before hashing/upsert so noise never enters the queue.
+        items=[x for x in items if _global_source_item_allowed(source,x[1],x[2])]
+        if not source.country and source.source_type in {'UN','MDB'}:
+            items=items[:200]
 
         content_hash=_hash_items(items)
         if ch.last_content_hash==content_hash:
