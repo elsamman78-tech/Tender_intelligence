@@ -15,6 +15,7 @@ BLOCKED_HOSTS = {
     'linkedin.com', 'www.linkedin.com', 'facebook.com', 'www.facebook.com',
     'x.com', 'www.x.com', 'twitter.com', 'www.twitter.com', 'youtube.com', 'www.youtube.com',
     'forms.office.com', 'forms-db.com', 'www.forms-db.com', 'alerts.worldbank.org',
+    'tajawob.om', 'www.tajawob.om',
 }
 
 # These paths can never represent a live bid opportunity, even when their page wrapper
@@ -24,6 +25,7 @@ HARD_NAVIGATION_PATH_TOKENS = {
     'accessibility', 'sitemap', 'faq', 'about', 'about-us', 'careers', 'career', 'jobs',
     'training', 'annual-report', 'annual-reports', 'history', 'news', 'login', 'register',
     'signup', 'sign-up', 'disclaimer', 'customercharter', 'customer-charter',
+    'noticesearchresults',
 }
 
 NAVIGATION_PATH_TOKENS = {
