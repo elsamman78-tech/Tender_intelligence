@@ -30,6 +30,16 @@ class Tender(Base):
     recommendation: Mapped[str | None] = mapped_column(String(60), nullable=True)
     discovery_candidate_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     discovery_method: Mapped[str | None] = mapped_column(String(60), nullable=True)
+
+    # V4 commercial participation / evidence fields.
+    bid_route: Mapped[str] = mapped_column(String(60), default='DIRECT', index=True)
+    eligibility_status: Mapped[str] = mapped_column(String(60), default='ELIGIBILITY_TO_VERIFY', index=True)
+    partner_requirement: Mapped[str] = mapped_column(String(100), default='NONE')
+    submission_language: Mapped[str] = mapped_column(String(40), default='UNKNOWN')
+    language_status: Mapped[str] = mapped_column(String(40), default='UNKNOWN')
+    participation_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_evidence_type: Mapped[str] = mapped_column(String(50), default='WEB', index=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
