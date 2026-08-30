@@ -1,8 +1,25 @@
 {% extends 'base.html' %}{% block content %}
-<section class="hero"><div><small>{{t.project_country or 'Country unknown'}}</small><h1>{{t.title}}</h1><p>{{t.client_name or ''}}</p></div><div class="bigscore"><b>{{'%.0f'|format(t.overall_score or 0)}}</b><span>/100</span><small>{{t.recommendation}}</small></div></section>
-<div class="grid3"><section class="card"><h3>الوقت</h3><b>{{t.business_days_remaining if t.business_days_remaining is not none else '—'}} يوم عمل</b><p>{{t.urgency_level}}</p></section><section class="card"><h3>النطاق</h3><b>{{t.scope_classification or 'UNKNOWN'}}</b><p>{{t.hard_reject_reason or 'No hard reject'}}</p></section><section class="card"><h3>AI</h3><b>{{t.ai_status}}</b><p>Local Ollama only</p></section></div>
-<section class="card"><h2>Score Breakdown</h2>{% if t.score_json %}<div class="breakdown">{% for k,v in t.score_json.components.items() %}<div><span>{{k}}</span><b>{{v}}</b></div>{% endfor %}</div>{% endif %}</section>
+<section class="hero">
+  <div><small>{{t.project_country or 'Country unknown'}} · {{t.source_evidence_type or 'WEB'}}</small><h1>{{t.title}}</h1><p>{{t.client_name or 'الجهة غير مستخرجة بعد'}}</p><div class="head-actions"><span class="route route-{{(t.bid_route or 'DIRECT')|lower|replace('_','-')}}">{{t.bid_route or 'DIRECT'}}</span><span class="status-pill {% if t.eligibility_status in ['ELIGIBLE','ELIGIBLE_LOCAL','ELIGIBLE_VIA_JV','ELIGIBLE_WITH_PARTNER'] %}good{% elif t.eligibility_status=='ELIGIBILITY_TO_VERIFY' %}review{% endif %}">{{t.eligibility_status}}</span></div></div>
+  <div class="bigscore"><b>{{'%.0f'|format(t.overall_score or 0)}}</b><span>/100</span><small>{{t.recommendation or '—'}}</small></div>
+</section>
+
+<div class="detail-meta">
+  <section class="card"><h3>طريقة الدخول</h3><b>{{t.bid_route or 'DIRECT'}}</b><p>Partner: {{t.partner_requirement or 'NONE'}}</p></section>
+  <section class="card"><h3>الموعد</h3><b>{{t.business_days_remaining if t.business_days_remaining is not none else '—'}} يوم عمل</b><p>{{t.submission_deadline or 'Deadline يحتاج تحقق'}} · {{t.urgency_level}}</p></section>
+  <section class="card"><h3>عمر الإعلان</h3><b>{{t.publication_age_days if t.publication_age_days is not none else '—'}} يوم</b><p>{{t.publication_date or 'Publication date يحتاج تحقق'}}</p></section>
+  <section class="card"><h3>لغة التقديم</h3><b>{{t.submission_language or 'UNKNOWN'}}</b><p>{{t.language_status or 'UNKNOWN'}}</p></section>
+</div>
+
+<section class="card"><div class="section-head"><div><span class="eyebrow">PARTICIPATION</span><h2>تحليل طريقة المشاركة</h2></div><span class="status-pill">{{t.scope_classification or 'UNKNOWN'}}</span></div><p>{{t.participation_notes or 'لم يتم استخراج قيود مشاركة إضافية.'}}</p></section>
+
+<section class="card"><div class="section-head"><div><span class="eyebrow">EVIDENCE</span><h2>المصدر الأصلي</h2></div>{% if t.source_url %}<a class="button secondary" href="{{t.source_url}}" target="_blank">فتح الإعلان الأصلي</a>{% endif %}</div><div class="grid3"><div><small>نوع الدليل</small><b>{{t.source_evidence_type or 'WEB'}}</b></div><div><small>طريقة الاكتشاف</small><b>{{t.discovery_method or 'MANUAL'}}</b></div><div><small>Reference</small><b>{{t.external_reference or '—'}}</b></div></div></section>
+
+<section class="card"><h2>Score Breakdown</h2>{% if t.score_json %}<div class="breakdown">{% for k,v in t.score_json.components.items() %}<div><span>{{k}}</span><b>{{v}}</b></div>{% endfor %}</div>{% else %}<span class="muted">لا يوجد breakdown بعد.</span>{% endif %}</section>
+
 {% if t.analysis_json %}<section class="card"><h2>Local AI Analysis</h2><pre>{{t.analysis_json | tojson(indent=2)}}</pre></section>{% endif %}
-<section class="card"><h2>قرار Business Development</h2><form method="post" action="/tenders/{{t.id}}/decision" class="inline"><select name="decision"><option>UNDECIDED</option><option>BID</option><option>NO_BID</option><option>HOLD</option></select><button>حفظ القرار</button></form></section>
-{% if t.raw_text %}<details class="card"><summary>النص المستخرج</summary><pre class="raw">{{t.raw_text[:30000]}}</pre></details>{% endif %}
+
+<section class="card"><div class="section-head"><div><span class="eyebrow">BD DECISION</span><h2>قرار Business Development</h2></div></div><form method="post" action="/tenders/{{t.id}}/decision" class="inline"><select name="decision"><option {% if t.bd_decision=='UNDECIDED' %}selected{% endif %}>UNDECIDED</option><option {% if t.bd_decision=='BID' %}selected{% endif %}>BID</option><option {% if t.bd_decision=='NO_BID' %}selected{% endif %}>NO_BID</option><option {% if t.bd_decision=='HOLD' %}selected{% endif %}>HOLD</option></select><button>حفظ القرار</button></form></section>
+
+{% if t.raw_text %}<details class="card"><summary>النص المستخرج من الإعلان / المستند</summary><pre class="raw">{{t.raw_text[:30000]}}</pre></details>{% endif %}
 {% endblock %}
