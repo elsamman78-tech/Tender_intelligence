@@ -28,6 +28,7 @@ from .discovery.providers.router import provider_status
 from .discovery.coverage import coverage_snapshot, run_coverage_benchmark
 from .routes.agents import router as agents_router
 from .routes.source_health import router as source_health_router
+from .routes.country_coverage import router as country_coverage_router
 
 Base.metadata.create_all(bind=engine)
 migrate_additive()
@@ -38,6 +39,7 @@ templates = Jinja2Templates(directory=str(BASE_DIR / 'app' / 'templates'))
 app.mount('/static', StaticFiles(directory=str(BASE_DIR / 'app' / 'static')), name='static')
 app.include_router(agents_router)
 app.include_router(source_health_router)
+app.include_router(country_coverage_router)
 
 @app.on_event('startup')
 def _startup():
@@ -148,7 +150,10 @@ def discovery_home(request: Request, db: Session = Depends(get_db)):
         'runs':db.scalar(select(func.count(SearchRun.id))) or 0,
     }
     recent=db.scalars(
-        select(DiscoveryCandidate).where(DiscoveryCandidate.candidate_type!='NOISE').order_by(DiscoveryCandidate.created_at.desc()).limit(30)
+        select(DiscoveryCandidate).where(
+            DiscoveryCandidate.candidate_type!='NOISE',
+            DiscoveryCandidate.validation_status!='REJECTED'
+        ).order_by(DiscoveryCandidate.created_at.desc()).limit(30)
     ).all()
     return templates.TemplateResponse(request=request, name='discovery.html', context={
         'k':k,'recent':recent,'zero_cost':ZERO_COST_MODE,'enabled':DISCOVERY_ENABLED,
