@@ -20,10 +20,12 @@ function Get-PythonVersion {
 
 function Test-SupportedPythonVersion {
     param([string]$Version)
-    return ($Version -eq '3.12' -or $Version -eq '3.11')
+    return ($Version -in @('3.14','3.13','3.12','3.11'))
 }
 
 $candidates = @(
+    @('py','-3.14'),
+    @('py','-3.13'),
     @('py','-3.12'),
     @('py','-3.11'),
     @('python'),
@@ -42,18 +44,15 @@ foreach ($candidate in $candidates) {
 }
 
 if (-not $pythonCmd) {
-    Write-Host '[ERROR] Python 3.11 or 3.12 is required.' -ForegroundColor Red
-    Write-Host 'Python 3.14 is not accepted for this project launcher.'
-    Write-Host ''
-    Write-Host 'Install Python 3.12 (64-bit), then run RUN_LOCAL_WINDOWS.bat again.'
-    Write-Host 'During installation enable: Add python.exe to PATH.'
+    Write-Host '[ERROR] Python 3.11, 3.12, 3.13 or 3.14 is required.' -ForegroundColor Red
+    Write-Host 'Install a supported 64-bit Python version and enable Add python.exe to PATH.'
     Write-Host ''
     Read-Host 'Press Enter to close'
     exit 1
 }
 
 $pythonLabel = ($pythonCmd -join ' ')
-Write-Host "[OK] Using Python: $pythonLabel ($pythonVersion)"
+Write-Host "[OK] Using Python: $pythonLabel ($pythonVersion)" -ForegroundColor Green
 
 $venvPython = Join-Path (Get-Location) '.venv\Scripts\python.exe'
 if (Test-Path $venvPython) {
@@ -61,23 +60,35 @@ if (Test-Path $venvPython) {
     if (-not (Test-SupportedPythonVersion $venvVersion)) {
         Write-Host "[1/4] Existing virtual environment uses unsupported Python $venvVersion. Recreating it..." -ForegroundColor Yellow
         Remove-Item -Recurse -Force '.venv'
+    } elseif ($venvVersion -ne $pythonVersion) {
+        Write-Host "[1/4] Existing virtual environment uses Python $venvVersion, detected Python is $pythonVersion. Recreating it..." -ForegroundColor Yellow
+        Remove-Item -Recurse -Force '.venv'
     } else {
         Write-Host "[1/4] Virtual environment already exists (Python $venvVersion)."
     }
 }
 
 if (-not (Test-Path $venvPython)) {
-    Write-Host '[1/4] Creating Python virtual environment...'
+    Write-Host "[1/4] Creating Python $pythonVersion virtual environment..."
     $exe = $pythonCmd[0]
     $args = @()
     if ($pythonCmd.Count -gt 1) { $args = $pythonCmd[1..($pythonCmd.Count-1)] }
     & $exe @args -m venv .venv
+    if ($LASTEXITCODE -ne 0) { throw 'Virtual environment creation failed.' }
 }
 
 if (-not (Test-Path $venvPython)) { throw 'Virtual environment creation failed.' }
 
-Write-Host '[2/4] Checking/installing requirements...'
+Write-Host '[2/4] Upgrading pip and checking/installing requirements...'
+& $venvPython -m pip install --disable-pip-version-check --upgrade pip
+if ($LASTEXITCODE -ne 0) { throw 'pip upgrade failed.' }
 & $venvPython -m pip install --disable-pip-version-check -r requirements.txt
+if ($LASTEXITCODE -ne 0) {
+    Write-Host '[ERROR] A dependency failed to install for this Python version.' -ForegroundColor Red
+    Write-Host 'Copy the error shown above and send it to ChatGPT.'
+    Read-Host 'Press Enter to close'
+    exit 1
+}
 
 if (-not (Test-Path '.env')) {
     Write-Host '[3/4] Creating local .env from .env.example...'
@@ -94,7 +105,7 @@ $serverCmd = "Set-Location '$($workDir.Replace("'","''"))'; & '$($venvPython.Rep
 Start-Process powershell.exe -ArgumentList '-NoExit','-ExecutionPolicy','Bypass','-Command',$serverCmd -WindowStyle Normal
 
 $healthy = $false
-for ($i=0; $i -lt 40; $i++) {
+for ($i=0; $i -lt 60; $i++) {
     Start-Sleep -Seconds 1
     try {
         $r = Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 'http://127.0.0.1:8000/api/v1/health'
@@ -103,7 +114,7 @@ for ($i=0; $i -lt 40; $i++) {
 }
 
 if (-not $healthy) {
-    Write-Host '[WARNING] Server did not become healthy within 40 seconds.' -ForegroundColor Yellow
+    Write-Host '[WARNING] Server did not become healthy within 60 seconds.' -ForegroundColor Yellow
     Write-Host 'Check the Tender Intelligence server window and send the error to ChatGPT.'
     Read-Host 'Press Enter to close'
     exit 1
