@@ -1,0 +1,186 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from urllib.parse import urljoin, urlparse
+import re
+
+from bs4 import BeautifulSoup
+
+from ..keywords import PROCUREMENT_TERMS, CONSULTANCY_TERMS, DOCUMENT_EXTENSIONS, SAUDI_DB_TERMS
+from ..utils import clean_text
+
+
+BLOCKED_HOSTS = {
+    'play.google.com', 'apps.apple.com', 'instagram.com', 'www.instagram.com',
+    'linkedin.com', 'www.linkedin.com', 'facebook.com', 'www.facebook.com',
+    'x.com', 'www.x.com', 'twitter.com', 'www.twitter.com', 'youtube.com', 'www.youtube.com',
+}
+
+NAVIGATION_PATH_TOKENS = {
+    'privacy', 'privacy-policy', 'terms', 'terms-of-use', 'contact', 'contact-us', 'contactus',
+    'accessibility', 'sitemap', 'faq', 'about', 'about-us', 'careers', 'career', 'jobs',
+    'training', 'eforms', 'process', 'legislation', 'guideline', 'guidelines', 'guide',
+    'annual-report', 'annual-reports', 'history', 'board-practice', 'sectors',
+    'prequalified-vendors', 'procurement-plans', 'winning-bids', 'awarded-tenders',
+    'archived-tenders', 'opened-bids', 'opening-results', 'live-opening', 'warranties',
+    'postponement', 'postponements', 'closing-tenders',
+}
+
+NAVIGATION_TEXT_TOKENS = {
+    'home', 'overview', 'privacy policy', 'privacy', 'terms of use', 'contact', 'contact us',
+    'accessibility', 'sitemap', 'faq', 'general faq', 'supplier faq', 'annual reports', 'news',
+    'training courses', 'eforms', 'process', 'prequalified vendors', 'procurement plans',
+    'winning bids', 'awarded tenders', 'archived tenders', 'live opening', 'tender opening results',
+    'دليل', 'الأخبار', 'اتصل بنا', 'سياسة الخصوصية', 'الشروط', 'الترسيات', 'التأمين الأولي',
+    'تأجيل المناقصات', 'فض العطاءات',
+}
+
+
+@dataclass(slots=True)
+class ExtractedOpportunity:
+    url: str
+    title: str
+    snippet: str = ''
+    evidence: str = 'HTML_LINK'
+
+
+@dataclass(slots=True)
+class ConnectorResult:
+    items: list[ExtractedOpportunity]
+    final_url: str
+    http_status: int | None = None
+    connector_name: str = 'GENERIC'
+    rendered: bool = False
+
+
+def _host(url: str) -> str:
+    try:
+        return (urlparse(url).hostname or '').lower()
+    except Exception:
+        return ''
+
+
+def is_blocked_external_host(url: str) -> bool:
+    host=_host(url)
+    return host in BLOCKED_HOSTS or any(host.endswith('.'+x) for x in BLOCKED_HOSTS if not x.startswith('www.'))
+
+
+def _path_words(url: str) -> set[str]:
+    try:
+        path=(urlparse(url).path or '').lower().replace('_','-')
+    except Exception:
+        return set()
+    return {x for x in re.split(r'[^a-z0-9]+',path) if x}
+
+
+def looks_like_navigation(url: str, title: str, context: str='') -> bool:
+    if is_blocked_external_host(url):
+        return True
+    low_title=clean_text(title or '').lower().strip()
+    if low_title in NAVIGATION_TEXT_TOKENS:
+        return True
+    words=_path_words(url)
+    if any(token in (urlparse(url).path or '').lower() for token in NAVIGATION_PATH_TOKENS):
+        # Do not block an individual procurement record merely because its descriptive
+        # title mentions a generic token. Require weak/no procurement evidence too.
+        probe=(low_title+' '+clean_text(context or '').lower())
+        if not any(k.lower() in probe for k in PROCUREMENT_TERMS):
+            return True
+    # Fragments and javascript controls are navigation, not opportunities.
+    parsed=urlparse(url)
+    if parsed.fragment and not parsed.path.strip('/'):
+        return True
+    return False
+
+
+def slug_title(url: str) -> str:
+    try:
+        path=(urlparse(url).path or '').rstrip('/')
+        slug=path.rsplit('/',1)[-1]
+    except Exception:
+        return ''
+    slug=re.sub(r'[-_]+',' ',slug)
+    slug=re.sub(r'\s+',' ',slug).strip()
+    if slug.lower() in {'tenders','tender','procurement','opportunities','publictenders'}:
+        return ''
+    return slug[:500]
+
+
+def _parent_context(anchor, max_chars: int=2500) -> str:
+    # Prefer row/card/article/list item so a generic link label like "View" inherits
+    # the actual tender title, reference and authority shown beside it.
+    parent=anchor.find_parent(['tr','article','li','section'])
+    if parent is None:
+        parent=anchor.find_parent(class_=re.compile(r'(card|item|tender|notice|opportun|result|row)',re.I))
+    if parent is None:
+        parent=anchor.parent
+    return clean_text(parent.get_text(' ',strip=True) if parent else '')[:max_chars]
+
+
+def _signal_counts(text: str) -> tuple[int,int,int]:
+    low=(text or '').lower()
+    procurement=sum(1 for x in PROCUREMENT_TERMS if x.lower() in low)
+    consultancy=sum(1 for x in CONSULTANCY_TERMS if x.lower() in low)
+    saudi=sum(1 for x in SAUDI_DB_TERMS if x.lower() in low)
+    return procurement,consultancy,saudi
+
+
+def is_individual_opportunity(url: str, title: str, context: str, *, country: str|None=None) -> bool:
+    if looks_like_navigation(url,title,context):
+        return False
+    clean_title=clean_text(title or '')
+    slug=slug_title(url)
+    probe=' '.join(x for x in (clean_title,context,slug) if x)
+    p,c,s=_signal_counts(probe)
+    # A document is only interesting when its name/context carries procurement evidence.
+    is_doc=url.lower().split('?',1)[0].endswith(DOCUMENT_EXTENSIONS)
+    if is_doc and p == 0:
+        return False
+    # Procurement evidence is mandatory. Consultancy relevance is validated later using
+    # the full page; keeping procurement-only records here allows Saudi D&B/EPC analysis.
+    if p == 0:
+        return False
+    # Reject obvious listing/root pages: they are SourceChannels, not opportunities.
+    try:
+        path=(urlparse(url).path or '').lower().rstrip('/')
+    except Exception:
+        path=''
+    if path.endswith(('/tenders','/tender','/procurement','/publictenders','/opportunities')):
+        return False
+    return True
+
+
+class BaseConnector:
+    name='BASE'
+    render_js=False
+
+    def extract(self, html: str, base_url: str, *, country: str|None=None) -> list[ExtractedOpportunity]:
+        raise NotImplementedError
+
+
+class PortalHtmlConnector(BaseConnector):
+    name='PORTAL_HTML'
+
+    def extract(self, html: str, base_url: str, *, country: str|None=None) -> list[ExtractedOpportunity]:
+        soup=BeautifulSoup(html or '','html.parser')
+        out=[]; seen=set()
+        for a in soup.find_all('a',href=True):
+            href=urljoin(base_url,a.get('href') or '')
+            if not href.startswith(('http://','https://')) or href in seen:
+                continue
+            title=clean_text(a.get_text(' ',strip=True))
+            context=_parent_context(a)
+            if not is_individual_opportunity(href,title,context,country=country):
+                continue
+            if not title or title.lower() in {'view','details','more','read more','عرض','تفاصيل'}:
+                # Prefer contextual title; URL slug is a final fallback.
+                contextual=context
+                if contextual and len(contextual)>8:
+                    title=contextual[:500]
+                else:
+                    title=slug_title(href) or title or 'Tender opportunity'
+            out.append(ExtractedOpportunity(url=href,title=title[:500],snippet=context[:3000]))
+            seen.add(href)
+            if len(out)>=500:
+                break
+        return out
