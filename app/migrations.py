@@ -14,6 +14,7 @@ SOURCE_COLUMNS = {
 TENDER_COLUMNS = {
     'discovery_candidate_id': 'INTEGER',
     'discovery_method': 'VARCHAR(60)',
+    'publication_age_days': 'INTEGER',
     'bid_route': "VARCHAR(60) DEFAULT 'DIRECT'",
     'eligibility_status': "VARCHAR(60) DEFAULT 'ELIGIBILITY_TO_VERIFY'",
     'partner_requirement': "VARCHAR(100) DEFAULT 'NONE'",
