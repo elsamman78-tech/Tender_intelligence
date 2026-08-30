@@ -6,12 +6,9 @@ from ..config import DISCOVERY_MAX_RESULTS_PER_QUERY, ZERO_COST_MODE
 from ..geography import TARGET_COUNTRIES, PRIORITY_COUNTRIES
 from .providers.router import providers
 from .source_registry import get_or_create_discovered_source
-from .candidates import upsert_candidate
+from .candidates import upsert_candidate, score_candidate
 from .utils import hash_text, domain_of
 
-# V4: direct procurement, engineering consulting, D&B/EPC (Saudi only), files,
-# private procurers and newspaper/gazette tender advertisements. Social-person/profile
-# discovery is intentionally disabled because it produced non-actionable noise.
 SEED_QUERIES = [
     ('"engineering consultancy" tender Saudi Arabia','en','Saudi Arabia','TENDER_SEARCH',100),
     ('"project management consultant" RFP Saudi Arabia','en','Saudi Arabia','TENDER_SEARCH',100),
@@ -33,11 +30,10 @@ SEED_QUERIES = [
     ('"general procurement notice" consulting services Africa','en',None,'EARLY_SIGNAL',70),
 ]
 
-REGION_PACKS = [
-    'Africa','North Africa','Sub-Saharan Africa','Middle East','GCC','Gulf Cooperation Council'
-]
-
+REGION_PACKS = ['Africa','North Africa','Sub-Saharan Africa','Middle East','GCC','Gulf Cooperation Council']
 DEPRECATED_PURPOSES = {'LINKEDIN_SIGNAL','FACEBOOK_SIGNAL','X_SIGNAL','SOCIAL_SIGNAL'}
+SOURCE_ONLY_PURPOSES = {'SOURCE_SEARCH','PRIVATE_SOURCE_SEARCH','EARLY_SIGNAL'}
+OPPORTUNITY_PURPOSES = {'TENDER_SEARCH','SAUDI_DB_SEARCH','FILE_SEARCH','NEWS_GAZETTE_SEARCH'}
 
 
 def generated_queries():
@@ -60,7 +56,6 @@ def generated_queries():
 
 
 def bootstrap_queries(db: Session):
-    # Disable old social queries left by previous versions without deleting history.
     for old in db.scalars(select(DiscoveryQuery).where(DiscoveryQuery.purpose.in_(DEPRECATED_PURPOSES))).all():
         old.enabled=False
     added=0
@@ -71,6 +66,13 @@ def bootstrap_queries(db: Session):
         else:
             q.enabled=True; q.priority=priority; q.purpose=purpose
     db.commit(); return added
+
+
+def _opportunity_hit_ok(q: DiscoveryQuery, title: str, snippet: str) -> bool:
+    p,c,_=score_candidate(title or '',snippet or '')
+    if q.purpose=='SAUDI_DB_SEARCH':
+        return p>=6 and (c>=4 or any(x in ((title or '')+' '+(snippet or '')).lower() for x in ('design','engineering','epc','turnkey','تصميم','هندسي')))
+    return p>=6 and c>=6
 
 
 def run_query(db: Session, q: DiscoveryQuery, provider=None, limit: int|None=None):
@@ -86,19 +88,32 @@ def run_query(db: Session, q: DiscoveryQuery, provider=None, limit: int|None=Non
         run=SearchRun(query_id=q.id,provider=p.name,query_text=q.query_text,status='RUNNING'); db.add(run); db.commit(); db.refresh(run)
         try:
             hits=p.search(q.query_text,limit or DISCOVERY_MAX_RESULTS_PER_QUERY)
-            new_domains=0; new_candidates=0; urls=[]
+            new_domains=0; new_candidates=0; noise=0; urls=[]
             for h in hits:
                 uh=hash_text(h.url); dom=domain_of(h.url)
                 db.add(SearchResult(run_id=run.id,url=h.url,url_hash=uh,domain=dom,title=h.title[:2000],snippet=h.snippet[:5000],rank=h.rank))
-                source,is_new_domain=get_or_create_discovered_source(db,h.url,'OPEN_SEARCH',f'provider={p.name}; purpose={q.purpose}; query={q.query_text[:300]}')
-                new_domains+=1 if is_new_domain else 0
-                cand,is_new=upsert_candidate(db,h.url,h.title,h.snippet,source,f'{p.name}:{q.purpose}',q.query_text)
-                new_candidates+=1 if is_new else 0
                 urls.append(h.url)
+
+                if q.purpose in SOURCE_ONLY_PURPOSES:
+                    # Source discovery enriches the source graph only. A portal/app/article
+                    # discovered here is not a tender candidate.
+                    _,is_new_domain=get_or_create_discovered_source(db,h.url,'OPEN_SOURCE_SEARCH',f'provider={p.name}; purpose={q.purpose}; query={q.query_text[:300]}')
+                    new_domains+=1 if is_new_domain else 0
+                    continue
+
+                if q.purpose not in OPPORTUNITY_PURPOSES or not _opportunity_hit_ok(q,h.title,h.snippet):
+                    noise+=1
+                    continue
+
+                source,is_new_domain=get_or_create_discovered_source(db,h.url,'OPEN_OPPORTUNITY_SEARCH',f'provider={p.name}; purpose={q.purpose}; query={q.query_text[:300]}')
+                new_domains+=1 if is_new_domain else 0
+                _,is_new=upsert_candidate(db,h.url,h.title,h.snippet,source,f'{p.name}:{q.purpose}',q.query_text)
+                new_candidates+=1 if is_new else 0
+
             now=datetime.utcnow(); run.completed_at=now; run.status='SUCCESS'; run.result_count=len(hits); run.new_domain_count=new_domains; run.new_candidate_count=new_candidates
-            q.run_count=(q.run_count or 0)+1; q.result_count=(q.result_count or 0)+len(hits); q.new_source_count=(q.new_source_count or 0)+new_domains; q.last_run_at=now
+            q.run_count=(q.run_count or 0)+1; q.result_count=(q.result_count or 0)+len(hits); q.new_source_count=(q.new_source_count or 0)+new_domains; q.noise_count=(q.noise_count or 0)+noise; q.last_run_at=now
             db.commit()
-            return {'ok':True,'provider':p.name,'run_id':run.id,'results':len(hits),'new_domains':new_domains,'new_candidates':new_candidates,'urls':urls}
+            return {'ok':True,'provider':p.name,'run_id':run.id,'results':len(hits),'new_domains':new_domains,'new_candidates':new_candidates,'noise':noise,'urls':urls}
         except Exception as e:
             last_error=str(e); run.completed_at=datetime.utcnow(); run.status='FAILED'; run.error=last_error[:1500]; db.commit()
             if provider is not None:
@@ -108,16 +123,10 @@ def run_query(db: Session, q: DiscoveryQuery, provider=None, limit: int|None=Non
 
 def run_query_fanout(db: Session, q: DiscoveryQuery, limit: int|None=None):
     results=[]
-    for p in providers():
-        results.append(run_query(db,q,provider=p,limit=limit))
-    ok=[r for r in results if r.get('ok')]
-    all_urls=set()
+    for p in providers(): results.append(run_query(db,q,provider=p,limit=limit))
+    ok=[r for r in results if r.get('ok')]; all_urls=set()
     for r in ok: all_urls.update(r.get('urls',[]))
-    return {
-        'ok':bool(ok),'provider_runs':results,'providers_ok':len(ok),'providers_total':len(results),
-        'results':sum(r.get('results',0) for r in ok),'unique_results':len(all_urls),
-        'new_domains':sum(r.get('new_domains',0) for r in ok),'new_candidates':sum(r.get('new_candidates',0) for r in ok)
-    }
+    return {'ok':bool(ok),'provider_runs':results,'providers_ok':len(ok),'providers_total':len(results),'results':sum(r.get('results',0) for r in ok),'unique_results':len(all_urls),'new_domains':sum(r.get('new_domains',0) for r in ok),'new_candidates':sum(r.get('new_candidates',0) for r in ok),'noise':sum(r.get('noise',0) for r in ok)}
 
 
 def select_query_batch(db: Session, limit: int=8):
