@@ -16,6 +16,9 @@ BLOCKED_HOSTS = {
     'x.com', 'www.x.com', 'twitter.com', 'www.twitter.com', 'youtube.com', 'www.youtube.com',
     'forms.office.com', 'forms-db.com', 'www.forms-db.com', 'alerts.worldbank.org',
     'tajawob.om', 'www.tajawob.om',
+    # Commercial tender aggregators are search signals, not authoritative procurement
+    # sources or individual bid opportunities. Keep them out of Source/Candidate ingress.
+    'globaltenders.com', 'www.globaltenders.com',
 }
 
 # These paths can never represent a live bid opportunity, even when their page wrapper
