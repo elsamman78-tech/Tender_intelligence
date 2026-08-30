@@ -255,7 +255,13 @@ def doctor(request: Request):
     ar = agent_reach_doctor(); ollama = ollama_health()
     return templates.TemplateResponse(request=request, name='doctor.html', context={'agent_reach':ar,'ollama':ollama,'zero_cost':ZERO_COST_MODE,'discovery_enabled':DISCOVERY_ENABLED,'providers':provider_status()})
 
+@app.get('/api/v1/health/live')
+def api_health_live():
+    """Fast local/container liveness probe. Never calls external services."""
+    return {'ok': True, 'service': APP_NAME}
+
 @app.get('/api/v1/health')
 def api_health():
+    """Detailed diagnostics. This may take several seconds because it checks optional integrations."""
     ar = agent_reach_doctor(timeout=8)
     return JSONResponse({'ok':True,'zero_cost_mode':ZERO_COST_MODE,'discovery_enabled':DISCOVERY_ENABLED,'providers':provider_status(),'geography':geography_policy_summary(),'ollama':ollama_health(),'agent_reach':{'installed':ar.installed,'enabled':ar.enabled,'ok':ar.ok}})
