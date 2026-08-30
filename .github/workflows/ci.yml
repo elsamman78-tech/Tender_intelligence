@@ -18,6 +18,19 @@ jobs:
       - run: python -m pytest -q
       - name: Import smoke test
         run: python -c "from app.main import app; print(app.title)"
+      - name: Package tested source
+        run: |
+          mkdir -p dist/Tender_Intelligence_V4
+          rsync -a --exclude '.git' --exclude 'dist' ./ dist/Tender_Intelligence_V4/
+          cd dist
+          zip -qr Tender_Intelligence_V4_refactor.zip Tender_Intelligence_V4
+      - name: Upload tested source package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tender_Intelligence_V4_refactor
+          path: dist/Tender_Intelligence_V4_refactor.zip
+          if-no-files-found: error
+          retention-days: 7
 
   docker:
     runs-on: ubuntu-latest
