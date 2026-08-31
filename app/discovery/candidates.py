@@ -1,10 +1,8 @@
 from datetime import datetime, date
-from io import BytesIO
 from urllib.parse import urlparse
 import re
 import httpx
 from bs4 import BeautifulSoup
-from pypdf import PdfReader
 from trafilatura import extract as trafilatura_extract
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -15,6 +13,7 @@ from ..services.participation import analyze_participation
 from ..services.dedup import fingerprint as make_fingerprint
 from ..geography import infer_country_from_text, is_excluded_country, is_target_country, normalize_country
 from .utils import hash_text, clean_text, keyword_score
+from .document_ocr import extract_pdf_text
 from .keywords import (
     PROCUREMENT_TERMS, CONSULTANCY_TERMS, ENGINEERING_DOMAIN_TERMS, NOISE_TERMS, DOCUMENT_EXTENSIONS,
     ACTIONABLE_NOTICE_TERMS, SAUDI_DB_TERMS,
@@ -153,9 +152,8 @@ def fetch_candidate_text(c: DiscoveryCandidate):
     ctype=r.headers.get('content-type','').lower()
     is_pdf='application/pdf' in ctype or str(r.url).lower().split('?',1)[0].endswith('.pdf')
     if is_pdf:
-        reader=PdfReader(BytesIO(r.content))
-        text='\n'.join((p.extract_text() or '') for p in reader.pages[:250])
-        return clean_text(text)[:300000],str(r.url)
+        text,_engine=extract_pdf_text(r.content)
+        return text[:300000],str(r.url)
     if c.candidate_type=='DOCUMENT' and not ('html' in ctype or 'text/' in ctype):
         raise RuntimeError('DOCUMENT_INDEXED_PARSING_NOT_YET_ENABLED_FOR_THIS_FORMAT')
     return _extract_main_html_text(r.text,str(r.url)), str(r.url)
@@ -221,7 +219,7 @@ def _evidence_type(c: DiscoveryCandidate, final_url: str) -> str:
     method=(c.discovery_method or '').upper()
     if 'NEWS_GAZETTE' in method:
         return 'NEWSPAPER_NOTICE'
-    if final_url.lower().split('?',1)[0].endswith('.pdf'):
+    if final_url.lower().split('?',1')[0].endswith('.pdf'):
         return 'PDF_NOTICE'
     return 'WEB_NOTICE'
 
@@ -264,8 +262,6 @@ def validate_candidate(db: Session, c: DiscoveryCandidate, auto_promote: bool=AU
     if p<12 or (cs<12 and not _is_saudi_db(combined,c.country_guess)):
         c.validation_status='REJECTED'; c.rejection_reason='CONTENT_NOT_ENGINEERING_PROCUREMENT'; db.commit(); return {'status':'REJECTED'}
 
-    # Listing rows (especially UNDP) already contain Posted/Deadline dates even when the
-    # detail-page text extractor omits them, so parse the combined evidence.
     deadline=_extract_deadline(combined)
     publication_date=_extract_publication_date(combined)
     result=run_analysis(c.country_guess or None,deadline,text,use_ai=False,publication_date=publication_date)
