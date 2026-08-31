@@ -12,12 +12,25 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.14"
           cache: pip
       - run: pip install -r requirements.txt
       - run: python -m pytest -q
       - name: Import smoke test
         run: python -c "from app.main import app; print(app.title)"
+      - name: Package tested source
+        run: |
+          mkdir -p dist/Tender_Intelligence_V4
+          rsync -a --exclude '.git' --exclude 'dist' ./ dist/Tender_Intelligence_V4/
+          cd dist
+          zip -qr Tender_Intelligence_V4_Python314.zip Tender_Intelligence_V4
+      - name: Upload tested source package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tender_Intelligence_V4_Python314
+          path: dist/Tender_Intelligence_V4_Python314.zip
+          if-no-files-found: error
+          retention-days: 7
 
   docker:
     runs-on: ubuntu-latest

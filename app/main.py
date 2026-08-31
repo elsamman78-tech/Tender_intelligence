@@ -13,6 +13,7 @@ from .models import Tender, Source, SourceChannel, SourceScan, DiscoveryCandidat
 from .migrations import migrate_additive
 from .services.pdf_parser import extract_pdf
 from .services.analysis import run_analysis
+from .services.participation import analyze_participation
 from .services.web_reader import read_url
 from .services.dedup import fingerprint as make_fingerprint
 from .geography import geography_policy_summary
@@ -27,6 +28,7 @@ from .discovery.providers.router import provider_status
 from .discovery.coverage import coverage_snapshot, run_coverage_benchmark
 from .routes.agents import router as agents_router
 from .routes.source_health import router as source_health_router
+from .routes.country_coverage import router as country_coverage_router
 
 Base.metadata.create_all(bind=engine)
 migrate_additive()
@@ -37,6 +39,7 @@ templates = Jinja2Templates(directory=str(BASE_DIR / 'app' / 'templates'))
 app.mount('/static', StaticFiles(directory=str(BASE_DIR / 'app' / 'static')), name='static')
 app.include_router(agents_router)
 app.include_router(source_health_router)
+app.include_router(country_coverage_router)
 
 @app.on_event('startup')
 def _startup():
@@ -50,13 +53,22 @@ def _shutdown():
 @app.get('/', response_class=HTMLResponse)
 def dashboard(request: Request, db: Session = Depends(get_db)):
     discovery_bootstrap(db)
-    tenders = db.scalars(select(Tender).order_by(Tender.created_at.desc()).limit(50)).all()
-    total = db.scalar(select(func.count(Tender.id))) or 0
-    high = db.scalar(select(func.count(Tender.id)).where(Tender.overall_score >= 80)) or 0
-    urgent = db.scalar(select(func.count(Tender.id)).where(Tender.urgency_level.in_(['URGENT','CRITICAL']))) or 0
-    rejected = db.scalar(select(func.count(Tender.id)).where(Tender.tender_status == 'HARD_REJECTED')) or 0
-    auto = db.scalar(select(func.count(Tender.id)).where(Tender.discovery_candidate_id.is_not(None))) or 0
-    return templates.TemplateResponse(request=request, name='dashboard.html', context={'tenders':tenders,'kpis':{'total':total,'high':high,'urgent':urgent,'rejected':rejected,'auto':auto},'zero_cost':ZERO_COST_MODE})
+    visible_statuses=['QUALIFIED','REVIEW_REQUIRED']
+    tenders = db.scalars(
+        select(Tender).where(Tender.tender_status.in_(visible_statuses)).order_by(Tender.created_at.desc()).limit(100)
+    ).all()
+    total = db.scalar(select(func.count(Tender.id)).where(Tender.tender_status.in_(visible_statuses))) or 0
+    direct = db.scalar(select(func.count(Tender.id)).where(Tender.tender_status.in_(visible_statuses), Tender.bid_route.in_(['DIRECT','DIRECT_LOCAL']))) or 0
+    partner = db.scalar(select(func.count(Tender.id)).where(Tender.tender_status.in_(visible_statuses), Tender.bid_route.in_(['JV','LOCAL_ASSOCIATION','SUBCONSULTANT','SAUDI_DB_PARTNER']))) or 0
+    saudi_db = db.scalar(select(func.count(Tender.id)).where(Tender.tender_status.in_(visible_statuses), Tender.bid_route=='SAUDI_DB_PARTNER')) or 0
+    review = db.scalar(select(func.count(Tender.id)).where(Tender.tender_status=='REVIEW_REQUIRED')) or 0
+    urgent = db.scalar(select(func.count(Tender.id)).where(Tender.tender_status.in_(visible_statuses), Tender.urgency_level.in_(['URGENT','CRITICAL']))) or 0
+    return templates.TemplateResponse(request=request, name='dashboard.html', context={
+        'tenders':tenders,
+        'kpis':{'total':total,'direct':direct,'partner':partner,'saudi_db':saudi_db,'review':review,'urgent':urgent},
+        'zero_cost':ZERO_COST_MODE,
+        'geography':geography_policy_summary(),
+    })
 
 @app.get('/tenders/new', response_class=HTMLResponse)
 def new_tender(request: Request):
@@ -75,7 +87,7 @@ async def create_tender(
         except Exception as e: text = f'[URL fetch failed: {e}]'
     if file and file.filename:
         suffix = Path(file.filename).suffix.lower()
-        if suffix != '.pdf': raise HTTPException(400, 'V2 manual upload currently accepts PDF only; discovery can index other document links.')
+        if suffix != '.pdf': raise HTTPException(400, 'Manual upload currently accepts PDF only; discovery can index other document links.')
         dest = UPLOAD_DIR / f"{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}_{Path(file.filename).name}"
         size = 0
         with dest.open('wb') as out:
@@ -93,11 +105,18 @@ async def create_tender(
     existing = db.scalar(select(Tender).where(Tender.fingerprint == fp))
     if existing: return RedirectResponse(f'/tenders/{existing.id}', status_code=303)
     result = run_analysis(project_country or None, deadline, text, use_ai=use_ai)
-    status = 'HARD_REJECTED' if result['hard_reject'] else ('EXPIRED' if result['urgency_level']=='EXPIRED' else 'QUALIFIED')
-    tender = Tender(title=title.strip(), fingerprint=fp, client_name=client_name.strip() or None, project_country=project_country.strip() or None,
+    participation = analyze_participation(project_country or None, text)
+    disallowed = participation['eligibility_status'] in {'NOT_ELIGIBLE_LANGUAGE','LOCAL_RESTRICTION'}
+    status = 'HARD_REJECTED' if (result['hard_reject'] or disallowed) else ('REVIEW_REQUIRED' if deadline is None or participation['eligibility_status']=='ELIGIBILITY_TO_VERIFY' else 'QUALIFIED')
+    tender = Tender(
+        title=title.strip(), fingerprint=fp, client_name=client_name.strip() or None, project_country=project_country.strip() or None,
         source_url=source_url.strip() or None, external_reference=external_reference.strip() or None, submission_deadline=deadline,
         raw_text=text[:1000000] or None, document_name=document_name, tender_status=status,
-        **{k:v for k,v in result.items() if k != 'hard_reject'})
+        bid_route=participation['bid_route'],eligibility_status=participation['eligibility_status'],
+        partner_requirement=participation['partner_requirement'],submission_language=participation['submission_language'],
+        language_status=participation['language_status'],participation_notes=participation['notes'],source_evidence_type='MANUAL',
+        **{k:v for k,v in result.items() if k != 'hard_reject'}
+    )
     db.add(tender); db.commit(); db.refresh(tender)
     return RedirectResponse(f'/tenders/{tender.id}', status_code=303)
 
@@ -114,10 +133,11 @@ def set_decision(tender_id: int, decision: str = Form(...), db: Session = Depend
     if not t: raise HTTPException(404)
     t.bd_decision = decision; db.commit(); return RedirectResponse(f'/tenders/{tender_id}', status_code=303)
 
-# ---------------- Discovery V2 ----------------
+# ---------------- Discovery V4 ----------------
 @app.get('/discovery', response_class=HTMLResponse)
 def discovery_home(request: Request, db: Session = Depends(get_db)):
     discovery_bootstrap(db)
+    noise_reasons=['SOCIAL_SOURCE_BLOCKED','NON_ACTIONABLE_NEWS_OR_PAGE','LOW_RELEVANCE','CONTENT_NOT_ENGINEERING_PROCUREMENT']
     k={
         'sources':db.scalar(select(func.count(Source.id))) or 0,
         'healthy':db.scalar(select(func.count(Source.id)).where(Source.health_status=='HEALTHY')) or 0,
@@ -125,11 +145,16 @@ def discovery_home(request: Request, db: Session = Depends(get_db)):
         'candidates':db.scalar(select(func.count(DiscoveryCandidate.id))) or 0,
         'new_candidates':db.scalar(select(func.count(DiscoveryCandidate.id)).where(DiscoveryCandidate.validation_status=='NEW')) or 0,
         'promoted':db.scalar(select(func.count(DiscoveryCandidate.id)).where(DiscoveryCandidate.validation_status=='PROMOTED')) or 0,
-        'social_leads':db.scalar(select(func.count(DiscoveryCandidate.id)).where(DiscoveryCandidate.validation_status=='LEAD_REQUIRES_OFFICIAL_SOURCE')) or 0,
-        'queries':db.scalar(select(func.count(DiscoveryQuery.id))) or 0,
+        'noise_rejected':db.scalar(select(func.count(DiscoveryCandidate.id)).where(DiscoveryCandidate.rejection_reason.in_(noise_reasons))) or 0,
+        'queries':db.scalar(select(func.count(DiscoveryQuery.id)).where(DiscoveryQuery.enabled==True)) or 0,
         'runs':db.scalar(select(func.count(SearchRun.id))) or 0,
     }
-    recent=db.scalars(select(DiscoveryCandidate).order_by(DiscoveryCandidate.created_at.desc()).limit(30)).all()
+    recent=db.scalars(
+        select(DiscoveryCandidate).where(
+            DiscoveryCandidate.candidate_type!='NOISE',
+            DiscoveryCandidate.validation_status!='REJECTED'
+        ).order_by(DiscoveryCandidate.created_at.desc()).limit(30)
+    ).all()
     return templates.TemplateResponse(request=request, name='discovery.html', context={
         'k':k,'recent':recent,'zero_cost':ZERO_COST_MODE,'enabled':DISCOVERY_ENABLED,
         'providers':provider_status(),'coverage':coverage_snapshot(db),'geography':geography_policy_summary()
@@ -204,11 +229,13 @@ def candidate_validate(candidate_id:int,db:Session=Depends(get_db)):
 
 @app.get('/api/v1/discovery/status')
 def discovery_status(db:Session=Depends(get_db)):
-    return {'enabled':DISCOVERY_ENABLED,'zero_cost_mode':ZERO_COST_MODE,'geography':geography_policy_summary(),'providers':provider_status(),
-            'sources':db.scalar(select(func.count(Source.id))) or 0,
-            'source_candidates':db.scalar(select(func.count(Source.id)).where(Source.lifecycle_status=='CANDIDATE')) or 0,
-            'opportunity_candidates':db.scalar(select(func.count(DiscoveryCandidate.id))) or 0,
-            'promoted':db.scalar(select(func.count(DiscoveryCandidate.id)).where(DiscoveryCandidate.validation_status=='PROMOTED')) or 0}
+    return {
+        'enabled':DISCOVERY_ENABLED,'zero_cost_mode':ZERO_COST_MODE,'geography':geography_policy_summary(),'providers':provider_status(),
+        'sources':db.scalar(select(func.count(Source.id))) or 0,
+        'source_candidates':db.scalar(select(func.count(Source.id)).where(Source.lifecycle_status=='CANDIDATE')) or 0,
+        'opportunity_candidates':db.scalar(select(func.count(DiscoveryCandidate.id))) or 0,
+        'promoted':db.scalar(select(func.count(DiscoveryCandidate.id)).where(DiscoveryCandidate.validation_status=='PROMOTED')) or 0
+    }
 
 @app.post('/api/v1/discovery/run')
 def discovery_run_api(db:Session=Depends(get_db)):
@@ -228,7 +255,13 @@ def doctor(request: Request):
     ar = agent_reach_doctor(); ollama = ollama_health()
     return templates.TemplateResponse(request=request, name='doctor.html', context={'agent_reach':ar,'ollama':ollama,'zero_cost':ZERO_COST_MODE,'discovery_enabled':DISCOVERY_ENABLED,'providers':provider_status()})
 
+@app.get('/api/v1/health/live')
+def api_health_live():
+    """Fast local/container liveness probe. Never calls external services."""
+    return {'ok': True, 'service': APP_NAME}
+
 @app.get('/api/v1/health')
 def api_health():
+    """Detailed diagnostics. This may take several seconds because it checks optional integrations."""
     ar = agent_reach_doctor(timeout=8)
     return JSONResponse({'ok':True,'zero_cost_mode':ZERO_COST_MODE,'discovery_enabled':DISCOVERY_ENABLED,'providers':provider_status(),'geography':geography_policy_summary(),'ollama':ollama_health(),'agent_reach':{'installed':ar.installed,'enabled':ar.enabled,'ok':ar.ok}})

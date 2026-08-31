@@ -9,3 +9,28 @@ services:
       - ./settings.yml:/etc/searxng/settings.yml:ro
     environment:
       - SEARXNG_BASE_URL=http://127.0.0.1:8888/
+
+  changedetection:
+    image: dgtlmoon/changedetection.io:latest
+    container_name: tender-changedetection
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5000:5000"
+    volumes:
+      - tender_changedetection:/datastore
+
+  rssbridge:
+    image: rssbridge/rss-bridge:latest
+    container_name: tender-rssbridge
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:80"
+
+  ocr:
+    build:
+      context: ../ocr
+    image: tender-ocrmypdf:latest
+    profiles: ["ocr-build"]
+
+volumes:
+  tender_changedetection:

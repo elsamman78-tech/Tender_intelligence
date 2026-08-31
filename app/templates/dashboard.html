@@ -1,7 +1,50 @@
 {% extends 'base.html' %}{% block content %}
-<div class="banner success">ZERO-COST MODE: {% if zero_cost %}ACTIVE{% else %}OFF{% endif %} — Paid core providers: 0</div>
-<section class="kpis five"><div><b>{{kpis.total}}</b><span>إجمالي الفرص</span></div><div><b>{{kpis.auto}}</b><span>اكتشاف تلقائي</span></div><div><b>{{kpis.high}}</b><span>Score ≥ 80</span></div><div><b>{{kpis.urgent}}</b><span>عاجل / حرج</span></div><div><b>{{kpis.rejected}}</b><span>Hard Reject</span></div></section>
-<section class="card"><div class="section-head"><h2>الفرص</h2><div><a class="button secondary" href="/discovery">محرك الاكتشاف</a> <a class="button" href="/tenders/new">+ إضافة مناقصة</a></div></div>
-<table><thead><tr><th>Score</th><th>المناقصة</th><th>الدولة</th><th>المصدر</th><th>أيام العمل</th><th>التوصية</th><th>قرار BD</th></tr></thead><tbody>
-{% for t in tenders %}<tr><td><span class="score">{{ '%.0f'|format(t.overall_score or 0) }}</span></td><td><a href="/tenders/{{t.id}}"><b>{{t.title}}</b></a><small>{{t.client_name or ''}}</small></td><td>{{t.project_country or '—'}}</td><td>{% if t.discovery_candidate_id %}<span class="badge ok">AUTO</span>{% else %}<span class="badge">MANUAL</span>{% endif %}<small>{{t.discovery_method or ''}}</small></td><td>{{t.business_days_remaining if t.business_days_remaining is not none else '—'}}<small>{{t.urgency_level}}</small></td><td>{{t.recommendation or '—'}}</td><td>{{t.bd_decision}}</td></tr>{% else %}<tr><td colspan="7">لا توجد مناقصات بعد.</td></tr>{% endfor %}
-</tbody></table></section>{% endblock %}
+<section class="page-head">
+  <div><span class="eyebrow">BUSINESS DEVELOPMENT</span><h1>الفرص المؤهلة</h1><p>تظهر هنا فقط الفرص القابلة للعمل أو التي تحتاج مراجعة أهلية حقيقية. نتائج البحث الخام والأخبار والسوشيال لا تظهر في هذه الصفحة.</p></div>
+  <div class="head-actions">
+    <a class="button secondary" href="/discovery">تشغيل الاكتشاف</a>
+    <a class="button secondary" href="/system/evaluation-report/download">⇩ تنزيل تقرير التقييم الكامل</a>
+    <a class="button" href="/tenders/new">+ إضافة فرصة</a>
+  </div>
+</section>
+
+<section class="metric-grid six">
+  <div class="metric"><span>إجمالي الفرص</span><b>{{kpis.total}}</b><small>Qualified + Review</small></div>
+  <div class="metric"><span>تقديم مباشر</span><b>{{kpis.direct}}</b><small>Direct / Local Direct</small></div>
+  <div class="metric"><span>شراكات</span><b>{{kpis.partner}}</b><small>JV / Association / Subconsultant</small></div>
+  <div class="metric accent"><span>Saudi D&amp;B</span><b>{{kpis.saudi_db}}</b><small>Design partner opportunities</small></div>
+  <div class="metric warning"><span>تحتاج مراجعة</span><b>{{kpis.review}}</b><small>Missing date / eligibility detail</small></div>
+  <div class="metric"><span>عاجل</span><b>{{kpis.urgent}}</b><small>Urgent / Critical</small></div>
+</section>
+
+<section class="scope-strip">
+  <div><strong>النطاق الحالي</strong><span>مصر · الخليج · الأردن · العراق · اليمن · أفريقيا</span></div>
+  <div><strong>الفروع المحلية</strong><span>مصر · السعودية · الإمارات · قطر · ليبيا · اليمن</span></div>
+  <div><strong>قواعد الوقت</strong><span>≤20 يوم من النشر · ≥10 أيام عمل متبقية</span></div>
+</section>
+
+<section class="card opportunity-card">
+  <div class="section-head"><div><span class="eyebrow">PIPELINE</span><h2>قائمة الفرص</h2></div><span class="muted">{{kpis.total}} فرصة نشطة</span></div>
+  <div class="table-wrap">
+  <table class="opportunity-table">
+    <thead><tr><th>الفرصة</th><th>الدولة</th><th>طريقة الدخول</th><th>الأهلية</th><th>العمر</th><th>المتبقي</th><th>المصدر</th><th>Score</th></tr></thead>
+    <tbody>
+    {% for t in tenders %}
+      <tr>
+        <td class="op-title"><a href="/tenders/{{t.id}}">{{t.title}}</a><small>{{t.client_name or 'الجهة غير مستخرجة بعد'}}</small></td>
+        <td><b>{{t.project_country or '—'}}</b><small>{{t.scope_classification or 'Scope review'}}</small></td>
+        <td><span class="route route-{{(t.bid_route or 'DIRECT')|lower|replace('_','-')}}">{{t.bid_route or 'DIRECT'}}</span><small>{{t.partner_requirement or 'NONE'}}</small></td>
+        <td><span class="status-pill {% if t.eligibility_status in ['ELIGIBLE','ELIGIBLE_LOCAL','ELIGIBLE_VIA_JV','ELIGIBLE_WITH_PARTNER'] %}good{% elif t.eligibility_status=='ELIGIBILITY_TO_VERIFY' %}review{% endif %}">{{t.eligibility_status}}</span><small>{{t.submission_language or 'UNKNOWN'}} submission</small></td>
+        <td>{% if t.publication_age_days is not none %}<b>{{t.publication_age_days}}</b><small>يوم</small>{% else %}<b>—</b><small>تحقق</small>{% endif %}</td>
+        <td>{% if t.business_days_remaining is not none %}<b>{{t.business_days_remaining}}</b><small>يوم عمل</small>{% else %}<b>—</b><small>Deadline غير مؤكد</small>{% endif %}</td>
+        <td><span class="evidence">{{t.source_evidence_type or 'WEB'}}</span><small>{{t.discovery_method or 'MANUAL'}}</small></td>
+        <td><span class="score-ring">{{'%.0f'|format(t.overall_score or 0)}}</span></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="8"><div class="empty-state"><b>لا توجد فرص مؤهلة حتى الآن</b><span>شغّل دورة الاكتشاف بعد تحديث الكود، والنتائج غير القابلة للتقديم لن تظهر هنا.</span></div></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endblock %}

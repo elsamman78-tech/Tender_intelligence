@@ -18,8 +18,6 @@ APP_NAME = 'Tender Intelligence Zero Cost V2 Discovery'
 ZERO_COST_MODE = os.getenv('ZERO_COST_MODE', 'true').lower() == 'true'
 ALLOW_PAID_APIS = False if ZERO_COST_MODE else os.getenv('ALLOW_PAID_APIS','false').lower() == 'true'
 
-# An explicitly non-empty DATABASE_URL overrides SQLite. A blank value means:
-# use the persistent data-home SQLite database at <TENDER_DATA_HOME>/data/tenders.db.
 _database_url_raw = (os.getenv('DATABASE_URL') or '').strip()
 DATABASE_URL = _database_url_raw or f"sqlite:///{(DATA_DIR / 'tenders.db').as_posix()}"
 
@@ -29,10 +27,24 @@ AUTONOMOUS_AGENTS_ENABLED = os.getenv('AUTONOMOUS_AGENTS_ENABLED', 'true').lower
 AUTONOMOUS_AGENT_MAX_CYCLES = max(1, min(int(os.getenv('AUTONOMOUS_AGENT_MAX_CYCLES', '2')), 3))
 AUTONOMOUS_AGENT_INTERVAL_MINUTES = max(60, int(os.getenv('AUTONOMOUS_AGENT_INTERVAL_MINUTES', '720')))
 TIMEZONE = os.getenv('TIMEZONE', 'Africa/Cairo')
+
 AGENT_REACH_ENABLED = os.getenv('AGENT_REACH_ENABLED', 'false').lower() == 'true'
 AGENT_REACH_SEARCH_COMMAND = os.getenv('AGENT_REACH_SEARCH_COMMAND', '').strip()
 SEARXNG_URL = os.getenv('SEARXNG_URL', '').strip()
 DDG_HTML_ENABLED = os.getenv('DDG_HTML_ENABLED', 'true').lower() == 'true'
+
+CHANGEDETECTION_ENABLED = os.getenv('CHANGEDETECTION_ENABLED', 'true').lower() == 'true'
+CHANGEDETECTION_URL = os.getenv('CHANGEDETECTION_URL', '').strip()
+CHANGEDETECTION_API_KEY = os.getenv('CHANGEDETECTION_API_KEY', '').strip()
+RSS_BRIDGE_ENABLED = os.getenv('RSS_BRIDGE_ENABLED', 'true').lower() == 'true'
+RSS_BRIDGE_URL = os.getenv('RSS_BRIDGE_URL', '').strip()
+
+OCR_ENABLED = os.getenv('OCR_ENABLED', 'true').lower() == 'true'
+OCR_DOCKER_FALLBACK = os.getenv('OCR_DOCKER_FALLBACK', 'true').lower() == 'true'
+OCR_DOCKER_IMAGE = os.getenv('OCR_DOCKER_IMAGE', 'tender-ocrmypdf:latest').strip()
+OCR_LANGUAGES = os.getenv('OCR_LANGUAGES', 'eng+ara+fra').strip() or 'eng'
+OCR_MIN_TEXT_CHARS = max(50, int(os.getenv('OCR_MIN_TEXT_CHARS', '180')))
+
 DISCOVERY_ENABLED = os.getenv('DISCOVERY_ENABLED', 'true').lower() == 'true'
 DISCOVERY_SCAN_INTERVAL_MINUTES = int(os.getenv('DISCOVERY_SCAN_INTERVAL_MINUTES', '360'))
 OPEN_DISCOVERY_INTERVAL_MINUTES = int(os.getenv('OPEN_DISCOVERY_INTERVAL_MINUTES', '720'))

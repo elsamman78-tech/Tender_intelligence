@@ -12,6 +12,7 @@ from ..db import get_db
 from ..models import Source
 from ..discovery.source_health import audit_all_sources, health_snapshot
 from ..system_diagnostics import run_and_build_full_diagnostic
+from ..evaluation_report import build_evaluation_zip
 
 router=APIRouter()
 templates=Jinja2Templates(directory=str(BASE_DIR / 'app' / 'templates'))
@@ -27,6 +28,16 @@ def source_health_home(request: Request, db: Session=Depends(get_db)):
 def source_health_audit(limit: int=Form(30), db: Session=Depends(get_db)):
     audit_all_sources(db,max(1,min(int(limit),100)))
     return RedirectResponse('/system/source-health',303)
+
+
+@router.get('/system/evaluation-report/download')
+def evaluation_report_download(db: Session=Depends(get_db)):
+    body,filename=build_evaluation_zip(db)
+    return Response(
+        content=body,
+        media_type='application/zip',
+        headers={'Content-Disposition':f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post('/system/full-diagnostic/export')

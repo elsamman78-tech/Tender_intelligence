@@ -1,4 +1,40 @@
-<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{{ title or 'Tender Intelligence' }}</title><link rel="stylesheet" href="/static/style.css"></head>
-<body><header><div><strong>AI Tender Intelligence</strong><small>Zero-Cost V2 — Discovery Network</small></div><nav><a href="/">لوحة التحكم</a><a href="/discovery">الاكتشاف</a><a href="/coverage/countries">Coverage</a><a href="/agents">Agents</a><a href="/sources">المصادر</a><a href="/system/source-health">Source Health</a><a href="/tenders/new">إضافة مناقصة</a><a href="/system/doctor">فحص النظام</a></nav></header>
-<main>{% block content %}{% endblock %}</main></body></html>
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{ title or 'Tender Intelligence' }}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar">
+    <a href="/" class="brand">
+      <span class="brand-mark">TI</span>
+      <span><strong>Tender Intelligence</strong><small>Engineering BD Platform</small></span>
+    </a>
+    <nav class="side-nav">
+      <span class="nav-label">Business Development</span>
+      <a href="/" class="nav-item"><span>◈</span> الفرص المؤهلة</a>
+      <a href="/tenders/new" class="nav-item"><span>＋</span> إضافة فرصة</a>
+      <span class="nav-label">Intelligence</span>
+      <a href="/discovery" class="nav-item"><span>⌁</span> محرك الاكتشاف</a>
+      <a href="/sources" class="nav-item"><span>◎</span> المصادر</a>
+      <a href="/coverage/countries" class="nav-item"><span>▦</span> تغطية الدول</a>
+      <span class="nav-label">System</span>
+      <a href="/agents" class="nav-item"><span>◇</span> Agents</a>
+      <a href="/system/source-health" class="nav-item"><span>♡</span> Source Health</a>
+      <a href="/system/doctor" class="nav-item"><span>⚙</span> فحص النظام</a>
+    </nav>
+    <div class="sidebar-foot"><span class="status-dot"></span> Discovery V4</div>
+  </aside>
+  <div class="workspace">
+    <header class="topbar">
+      <div><strong>Engineering Tender Intelligence</strong><small>Verified opportunities · Direct bids · JV · Saudi D&amp;B</small></div>
+      <a class="top-action" href="/tenders/new">+ إضافة مناقصة</a>
+    </header>
+    <main>{% block content %}{% endblock %}</main>
+  </div>
+</div>
+</body>
+</html>
