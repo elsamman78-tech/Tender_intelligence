@@ -18,8 +18,6 @@ APP_NAME = 'Tender Intelligence Zero Cost V2 Discovery'
 ZERO_COST_MODE = os.getenv('ZERO_COST_MODE', 'true').lower() == 'true'
 ALLOW_PAID_APIS = False if ZERO_COST_MODE else os.getenv('ALLOW_PAID_APIS','false').lower() == 'true'
 
-# An explicitly non-empty DATABASE_URL overrides SQLite. A blank value means:
-# use the persistent data-home SQLite database at <TENDER_DATA_HOME>/data/tenders.db.
 _database_url_raw = (os.getenv('DATABASE_URL') or '').strip()
 DATABASE_URL = _database_url_raw or f"sqlite:///{(DATA_DIR / 'tenders.db').as_posix()}"
 
@@ -35,19 +33,15 @@ AGENT_REACH_SEARCH_COMMAND = os.getenv('AGENT_REACH_SEARCH_COMMAND', '').strip()
 SEARXNG_URL = os.getenv('SEARXNG_URL', '').strip()
 DDG_HTML_ENABLED = os.getenv('DDG_HTML_ENABLED', 'true').lower() == 'true'
 
-# Optional local discovery helpers. Core discovery never depends on them: when one helper
-# is unavailable the scanner falls back to its direct HTML/Playwright path.
 CHANGEDETECTION_ENABLED = os.getenv('CHANGEDETECTION_ENABLED', 'true').lower() == 'true'
 CHANGEDETECTION_URL = os.getenv('CHANGEDETECTION_URL', '').strip()
 CHANGEDETECTION_API_KEY = os.getenv('CHANGEDETECTION_API_KEY', '').strip()
 RSS_BRIDGE_ENABLED = os.getenv('RSS_BRIDGE_ENABLED', 'true').lower() == 'true'
 RSS_BRIDGE_URL = os.getenv('RSS_BRIDGE_URL', '').strip()
 
-# Scanned tender/newspaper PDFs are first parsed normally; OCR only runs when almost no
-# searchable text exists. OCRmyPDF CLI is preferred and Docker is a zero-cost fallback.
 OCR_ENABLED = os.getenv('OCR_ENABLED', 'true').lower() == 'true'
 OCR_DOCKER_FALLBACK = os.getenv('OCR_DOCKER_FALLBACK', 'true').lower() == 'true'
-OCR_DOCKER_IMAGE = os.getenv('OCR_DOCKER_IMAGE', 'jbarlow83/ocrmypdf:latest').strip()
+OCR_DOCKER_IMAGE = os.getenv('OCR_DOCKER_IMAGE', 'tender-ocrmypdf:latest').strip()
 OCR_LANGUAGES = os.getenv('OCR_LANGUAGES', 'eng+ara+fra').strip() or 'eng'
 OCR_MIN_TEXT_CHARS = max(50, int(os.getenv('OCR_MIN_TEXT_CHARS', '180')))
 
