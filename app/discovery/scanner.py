@@ -12,6 +12,9 @@ from .candidates import upsert_candidate
 from .utils import clean_text
 from .keywords import ENGINEERING_DOMAIN_TERMS, SAUDI_DB_TERMS
 from .connectors import scan_url
+from .collectors import collect_special_source
+from .change_detection import should_scan
+from .feed_bridge import fetch_bridge_items
 from .connectors.crawlee_fetch import AccessBlockedError, LoginRequiredError
 
 OPPORTUNITY_CHANNEL_PURPOSES = {
@@ -65,12 +68,6 @@ def _has_engineering_domain(text: str) -> bool:
 
 
 def _global_source_item_allowed(source: Source, title: str, snippet: str) -> bool:
-    """UN/MDB pages are global and can expose hundreds of unrelated procurements.
-
-    Keep country-specific portals broad enough for source-specific follow-up, but require
-    strong engineering-domain evidence before a record from a global UN/MDB listing can
-    consume validation capacity. Saudi D&B/EPC remains allowed when explicitly visible.
-    """
     if source.country or source.source_type not in {'UN','MDB'}:
         return True
     probe=clean_text((title or '')+' '+(snippet or ''))
@@ -82,7 +79,18 @@ def _global_source_item_allowed(source: Source, title: str, snippet: str) -> boo
     return False
 
 
+def _merge_items(primary, fallback):
+    out=[]; seen=set()
+    for item in list(primary)+list(fallback):
+        try: u,title,snip=item
+        except Exception: continue
+        if not u or u in seen: continue
+        seen.add(u); out.append((u,title,snip))
+    return out
+
+
 def scan_channel(db: Session, source: Source, ch: SourceChannel):
+    previous_scan=ch.last_scan_at
     scan=SourceScan(source_id=source.id,channel_id=ch.id,status='RUNNING')
     db.add(scan); db.commit(); db.refresh(scan)
     source.scan_count=(source.scan_count or 0)+1
@@ -91,9 +99,17 @@ def scan_channel(db: Session, source: Source, ch: SourceChannel):
         scan.status='BLOCKED'; scan.error='BLOCKED_BY_COST_POLICY'
         source.health_status='BLOCKED_BY_COST_POLICY'; db.commit(); return scan
 
+    # ChangeDetection is a performance hint, never a dependency. Only skip when it has
+    # checked the URL after our previous scan and says nothing changed.
+    monitor_hint=should_scan(ch.url,previous_scan)
+    if monitor_hint is False:
+        now=datetime.utcnow(); scan.status='UNCHANGED'; scan.items_seen=0; scan.completed_at=now
+        source.last_success_at=now; source.success_count=(source.success_count or 0)+1; source.health_status='HEALTHY'; source.last_error=None
+        ch.health_status='HEALTHY'; ch.last_success_at=now; ch.last_error=None
+        db.commit(); return scan
+
     try:
         if ch.purpose not in OPPORTUNITY_CHANNEL_PURPOSES:
-            # Metadata/award/early-signal channels never feed the tender queue.
             items=[]; connector_name=f'NON_OPPORTUNITY:{ch.access_method}'
             scan.http_status=None
         elif ch.access_method=='RSS':
@@ -109,13 +125,21 @@ def scan_channel(db: Session, source: Source, ch: SourceChannel):
             r.raise_for_status(); items=_sitemap_items(r.text)
             connector_name='SITEMAP'
         else:
-            result=scan_url(ch.url,country=source.country)
+            result=collect_special_source(ch.url,country=source.country)
+            if result is None:
+                result=scan_url(ch.url,country=source.country)
             scan.http_status=result.http_status
             connector_name=result.connector_name
             items=[(x.url,x.title,x.snippet) for x in result.items]
 
-        # Global portals can otherwise inject hundreds of non-engineering tenders from
-        # every country. Filter before hashing/upsert so noise never enters the queue.
+            # RSS-Bridge is a second extraction path for static pages/newspaper listings.
+            # It is only consulted when the primary connector found very little.
+            if len(items)<3:
+                bridged=fetch_bridge_items(ch.url)
+                if bridged:
+                    items=_merge_items(items,bridged)
+                    connector_name += '+RSS_BRIDGE'
+
         items=[x for x in items if _global_source_item_allowed(source,x[1],x[2])]
         if not source.country and source.source_type in {'UN','MDB'}:
             items=items[:200]
