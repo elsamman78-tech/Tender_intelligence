@@ -23,6 +23,19 @@ function Test-SupportedPythonVersion {
     return ($Version -in @('3.14','3.13','3.12','3.11'))
 }
 
+function Set-EnvValue {
+    param([string]$Name,[string]$Value)
+    $path='.env'
+    $content=Get-Content $path -Raw
+    $escaped=[regex]::Escape($Name)
+    if ($content -match "(?m)^$escaped=.*$") {
+        $content=[regex]::Replace($content,"(?m)^$escaped=.*$","$Name=$Value")
+    } else {
+        $content=$content.TrimEnd()+[Environment]::NewLine+"$Name=$Value"+[Environment]::NewLine
+    }
+    Set-Content -Path $path -Value $content -Encoding ascii
+}
+
 $candidates = @(
     @('py','-3.14'),
     @('py','-3.13'),
@@ -58,71 +71,110 @@ $venvPython = Join-Path (Get-Location) '.venv\Scripts\python.exe'
 if (Test-Path $venvPython) {
     $venvVersion = Get-PythonVersion @($venvPython)
     if (-not (Test-SupportedPythonVersion $venvVersion)) {
-        Write-Host "[1/4] Existing virtual environment uses unsupported Python $venvVersion. Recreating it..." -ForegroundColor Yellow
+        Write-Host "[1/5] Existing virtual environment uses unsupported Python $venvVersion. Recreating it..." -ForegroundColor Yellow
         Remove-Item -Recurse -Force '.venv'
     } elseif ($venvVersion -ne $pythonVersion) {
-        Write-Host "[1/4] Existing virtual environment uses Python $venvVersion, detected Python is $pythonVersion. Recreating it..." -ForegroundColor Yellow
+        Write-Host "[1/5] Existing virtual environment uses Python $venvVersion, detected Python is $pythonVersion. Recreating it..." -ForegroundColor Yellow
         Remove-Item -Recurse -Force '.venv'
     } else {
-        Write-Host "[1/4] Virtual environment already exists (Python $venvVersion)."
+        Write-Host "[1/5] Virtual environment already exists (Python $venvVersion)."
     }
 }
 
 if (-not (Test-Path $venvPython)) {
-    Write-Host "[1/4] Creating Python $pythonVersion virtual environment..."
+    Write-Host "[1/5] Creating Python $pythonVersion virtual environment..."
     $exe = $pythonCmd[0]
     $args = @()
     if ($pythonCmd.Count -gt 1) { $args = $pythonCmd[1..($pythonCmd.Count-1)] }
     & $exe @args -m venv .venv
     if ($LASTEXITCODE -ne 0) { throw 'Virtual environment creation failed.' }
 }
-
 if (-not (Test-Path $venvPython)) { throw 'Virtual environment creation failed.' }
 
-Write-Host '[2/4] Upgrading pip and checking/installing requirements...'
+Write-Host '[2/5] Upgrading pip and checking/installing requirements...'
 & $venvPython -m pip install --disable-pip-version-check --upgrade pip
 if ($LASTEXITCODE -ne 0) { throw 'pip upgrade failed.' }
 & $venvPython -m pip install --disable-pip-version-check -r requirements.txt
 if ($LASTEXITCODE -ne 0) {
     Write-Host '[ERROR] A dependency failed to install for this Python version.' -ForegroundColor Red
-    Write-Host 'Copy the error shown above and send it to ChatGPT.'
     Read-Host 'Press Enter to close'
     exit 1
 }
 
-# JavaScript-heavy procurement portals (Etimad, ESNAD, etc.) use Playwright.
-# Install Chromium once per virtual environment. Failure is non-fatal because the
-# connector layer has an HTTP fallback and the evaluation report exposes source health.
 $browserMarker = Join-Path (Get-Location) '.venv\.tender_playwright_chromium_ready'
 if (-not (Test-Path $browserMarker)) {
-    Write-Host '[2b/4] Preparing Chromium for JavaScript tender portals (one-time setup)...'
+    Write-Host '[2b/5] Preparing Chromium for JavaScript tender portals (one-time setup)...'
     & $venvPython -m playwright install chromium
     if ($LASTEXITCODE -eq 0) {
         Set-Content -Path $browserMarker -Value (Get-Date).ToString('o')
         Write-Host '[OK] JavaScript portal browser is ready.' -ForegroundColor Green
     } else {
-        Write-Host '[WARNING] Chromium setup failed. Static connectors will still work; JS portals will use HTTP fallback.' -ForegroundColor Yellow
+        Write-Host '[WARNING] Chromium setup failed. Static connectors will still work.' -ForegroundColor Yellow
     }
 } else {
-    Write-Host '[2b/4] JavaScript portal browser already prepared.'
+    Write-Host '[2b/5] JavaScript portal browser already prepared.'
 }
 
 if (-not (Test-Path '.env')) {
-    Write-Host '[3/4] Creating local .env from .env.example...'
+    Write-Host '[3/5] Creating local .env from .env.example...'
     Copy-Item '.env.example' '.env'
 } else {
-    Write-Host '[3/4] Existing .env preserved.'
+    Write-Host '[3/5] Existing .env preserved.'
+}
+
+Write-Host '[4/5] Starting zero-cost discovery helpers when Docker is available...'
+$dockerReady=$false
+if (Get-Command docker -ErrorAction SilentlyContinue) {
+    try {
+        docker info *> $null
+        if ($LASTEXITCODE -eq 0) { $dockerReady=$true }
+    } catch {}
+}
+if ($dockerReady) {
+    try {
+        docker compose -f 'searxng\docker-compose.yml' up -d
+        if ($LASTEXITCODE -eq 0) {
+            $searxReady=$false
+            for ($i=0; $i -lt 30; $i++) {
+                try {
+                    $r=Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 'http://127.0.0.1:8888/search?q=tender&format=json'
+                    if ($r.StatusCode -eq 200) { $searxReady=$true; break }
+                } catch {}
+                Start-Sleep -Seconds 1
+            }
+            if ($searxReady) {
+                Set-EnvValue 'SEARXNG_URL' 'http://127.0.0.1:8888'
+                Write-Host '[OK] SearXNG search stack enabled.' -ForegroundColor Green
+            }
+            try {
+                $r=Invoke-WebRequest -UseBasicParsing -TimeoutSec 3 'http://127.0.0.1:5000/'
+                if ($r.StatusCode -ge 200) {
+                    Set-EnvValue 'CHANGEDETECTION_URL' 'http://127.0.0.1:5000'
+                    Write-Host '[OK] ChangeDetection page watcher enabled.' -ForegroundColor Green
+                }
+            } catch { Write-Host '[INFO] ChangeDetection helper is still warming up; core scan will continue.' }
+            try {
+                $r=Invoke-WebRequest -UseBasicParsing -TimeoutSec 3 'http://127.0.0.1:3000/'
+                if ($r.StatusCode -ge 200) {
+                    Set-EnvValue 'RSS_BRIDGE_URL' 'http://127.0.0.1:3000'
+                    Write-Host '[OK] RSS-Bridge fallback enabled.' -ForegroundColor Green
+                }
+            } catch { Write-Host '[INFO] RSS-Bridge helper is still warming up; core scan will continue.' }
+        }
+    } catch {
+        Write-Host '[INFO] Docker helper startup failed; Tender Intelligence will use native discovery paths.' -ForegroundColor Yellow
+    }
+} else {
+    Write-Host '[INFO] Docker unavailable. Native discovery + Playwright will continue normally.' -ForegroundColor Yellow
 }
 
 New-Item -ItemType Directory -Force -Path 'backups' | Out-Null
 
-Write-Host '[4/4] Starting Tender Intelligence...'
+Write-Host '[5/5] Starting Tender Intelligence...'
 $workDir = (Get-Location).Path
 $serverCmd = "Set-Location '$($workDir.Replace("'","''"))'; & '$($venvPython.Replace("'","''"))' -m uvicorn app.main:app --host 0.0.0.0 --port 8000"
 Start-Process powershell.exe -ArgumentList '-NoExit','-ExecutionPolicy','Bypass','-Command',$serverCmd -WindowStyle Normal
 
-# Use the lightweight local-only liveness probe. The detailed /api/v1/health endpoint
-# intentionally checks optional integrations and can take several seconds.
 $healthy = $false
 for ($i=0; $i -lt 45; $i++) {
     Start-Sleep -Seconds 1
