@@ -7,7 +7,7 @@ from ...config import DISCOVERY_REQUEST_TIMEOUT, USER_AGENT
 
 
 class GdeltNewsProvider:
-    """Free GDELT DOC 2.0 news index used only for newspaper/gazette discovery."""
+    """Free GDELT DOC 2.0 index dedicated to newspaper/gazette discovery."""
     name='GDELT_NEWS'
     cost_class='FREE_PUBLIC'
     news_only=True
@@ -17,6 +17,10 @@ class GdeltNewsProvider:
         return True
 
     def search(self,query: str,limit: int=10):
+        low=(query or '').lower()
+        news_markers=('newspaper','gazette','e-paper','tender notice','procurement notice','صحيفة','جريدة')
+        if not any(x in low for x in news_markers):
+            return []
         params={
             'query':query,
             'mode':'ArtList',
@@ -31,6 +35,6 @@ class GdeltNewsProvider:
         for i,item in enumerate(articles[:limit],1):
             url=item.get('url') or ''
             if not url.startswith(('http://','https://')): continue
-            meta=' | '.join(x for x in [item.get('domain'),item.get('sourcecountry'),item.get('language'),item.get('seendate')] if x)
+            meta=' | '.join(str(x) for x in [item.get('domain'),item.get('sourcecountry'),item.get('language'),item.get('seendate')] if x)
             out.append(SearchHit(url=url,title=item.get('title') or '',snippet=meta,rank=i))
         return out
