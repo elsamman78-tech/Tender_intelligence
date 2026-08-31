@@ -26,5 +26,11 @@ services:
     ports:
       - "127.0.0.1:3000:80"
 
+  ocr:
+    build:
+      context: ../ocr
+    image: tender-ocrmypdf:latest
+    profiles: ["ocr-build"]
+
 volumes:
   tender_changedetection:
